@@ -13,6 +13,7 @@ build/
 node_modules/
 .npm/
 dist/
+coverage/
 
 # Environment
 .env
