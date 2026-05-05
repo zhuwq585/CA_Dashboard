@@ -45,6 +45,19 @@ This project follows **spec-driven TDD**:
 
 Never write implementation code for a feature without a spec document and failing tests already in place.
 
+## Naming Rules
+
+Branch names must start with one of the following prefixes:
+
+| Prefix | Purpose |
+|---|---|
+| `design/` | Architecture and system design work |
+| `feature/` | New feature implementation |
+| `fix/` | Bug fixes |
+| `dev/` | Tooling, configuration, and developer experience |
+
+Example: `feature/session-status-polling`, `fix/hanging-detection-timeout`
+
 ## Documents
 
 - [Architecture](docs/architecture.md) — system design, component decisions, transport and UI layer choices
