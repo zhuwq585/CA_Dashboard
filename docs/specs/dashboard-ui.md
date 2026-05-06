@@ -201,6 +201,7 @@ Entry point. Wires the three components together and starts the app. No unit tes
 ```typescript
 import { render } from 'ink';
 import React from 'react';
+import type { ResolvedSession } from './types.js';
 import { SessionFileWatcher } from './watcher/sessionFileWatcher.js';
 import { StatusResolver } from './resolver/statusResolver.js';
 import { Dashboard } from './ui/Dashboard.js';
