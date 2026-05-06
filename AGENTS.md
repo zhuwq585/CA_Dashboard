@@ -59,11 +59,20 @@ Two distinct agent roles operate in this repo. Each agent must know which role i
 
 1. **Design** — architecture decisions are captured in `docs/architecture.md` before any feature work
 2. **Spec** — main-branch agent writes `docs/specs/<feature>.md` before any implementation begins
-3. **Red** — feature-branch agent writes failing unit tests that match the spec
-4. **Green** — implement the minimum code to make tests pass
-5. **Refactor** — clean up; tests must still pass
+3. **Red** — create stub source files, then write failing tests
+4. **Green** — fill in logic until all tests pass
+5. **Refactor** — clean up; all tests must still pass
 
 Never write implementation code without a spec. Never write a spec without reading `docs/architecture.md` first.
+
+### Red phase rules
+
+Before writing any tests, create every source file the spec calls for. Each file must:
+- Export all types, interfaces, enums, and class/function signatures exactly as the spec defines
+- Have empty or minimal bodies — functions return `undefined`, class methods throw `new Error('not implemented')`, enums and interfaces are complete
+- Compile without TypeScript errors (`npm run build` passes)
+
+Tests must fail in the red phase because the **logic is missing**, not because a file or export does not exist. An import error or type error is not a valid red state — fix it before writing tests.
 
 ## Naming Rules
 
