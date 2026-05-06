@@ -24,12 +24,14 @@ export class SessionFileWatcher {
 	private debounceTimer: ReturnType<typeof setTimeout> | null = null;
 	private onChanged: SessionsChangedCallback | null = null;
 
+	// Stores options with defaults applied.
 	constructor(options?: SessionFileWatcherOptions) {
 		this.sessionsDir = options?.sessionsDir ?? path.join(os.homedir(), '.claude', 'sessions');
 		this.debounceMs  = options?.debounceMs     ?? 100;
 		this.tickIntervalMs = options?.tickIntervalMs ?? 1000;
 	}
 
+	// Runs an immediate scan, then watches for file changes and periodic ticks.
 	start(onChanged: SessionsChangedCallback): void {
 		this.active = true;
 		this.onChanged = onChanged;
@@ -49,6 +51,7 @@ export class SessionFileWatcher {
 		}, this.tickIntervalMs);
 	}
 
+	// Cancels the watcher, tick timer, and any pending debounce; no callbacks fire after this returns.
 	stop(): void {
 		this.active = false;
 		this.onChanged = null;
@@ -67,6 +70,7 @@ export class SessionFileWatcher {
 		}
 	}
 
+	// Resets the debounce timer so rapid watch events coalesce into one scan.
 	private scheduleScan(): void {
 		if (this.debounceTimer !== null) clearTimeout(this.debounceTimer);
 		this.debounceTimer = setTimeout(() => {
@@ -77,6 +81,7 @@ export class SessionFileWatcher {
 		}, this.debounceMs);
 	}
 
+	// Reads all *.json files in sessionsDir and returns parsed SessionInfo objects.
 	private async scan(): Promise<SessionInfo[]> {
 		let entries: string[];
 		try {
