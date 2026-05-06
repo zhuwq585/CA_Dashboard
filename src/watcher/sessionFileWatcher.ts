@@ -12,6 +12,20 @@ export interface SessionFileWatcherOptions {
 
 export type SessionsChangedCallback = (sessions: SessionInfo[]) => void;
 
+// Validates and returns a SessionInfo; throws if required fields are absent or wrong type.
+function parseSessionInfo(raw: string): SessionInfo {
+	const obj = JSON.parse(raw) as Record<string, unknown>;
+	if (
+		typeof obj.pid !== 'number' ||
+		typeof obj.sessionId !== 'string' ||
+		typeof obj.cwd !== 'string' ||
+		typeof obj.startedAt !== 'number'
+	) {
+		throw new Error('invalid SessionInfo: missing required fields');
+	}
+	return obj as unknown as SessionInfo;
+}
+
 export class SessionFileWatcher {
 	private sessionsDir: string;
 	private debounceMs: number;
@@ -33,6 +47,7 @@ export class SessionFileWatcher {
 
 	// Runs an immediate scan, then watches for file changes and periodic ticks.
 	start(onChanged: SessionsChangedCallback): void {
+		if (this.active) throw new Error('SessionFileWatcher is already running; call stop() first');
 		this.active = true;
 		this.onChanged = onChanged;
 
@@ -81,7 +96,7 @@ export class SessionFileWatcher {
 		}, this.debounceMs);
 	}
 
-	// Reads all *.json files in sessionsDir and returns parsed SessionInfo objects.
+	// Reads all *.json files in sessionsDir in parallel and returns parsed SessionInfo objects.
 	private async scan(): Promise<SessionInfo[]> {
 		let entries: string[];
 		try {
@@ -90,13 +105,21 @@ export class SessionFileWatcher {
 			return [];
 		}
 
-		const newCache = new Map<string, SessionInfo>();
+		const jsonFiles = entries.filter(e => e.endsWith('.json'));
+		const results = await Promise.allSettled(
+			jsonFiles.map(filename =>
+				fsp.readFile(path.join(this.sessionsDir, filename), 'utf-8')
+					.then(raw => ({ filename, info: parseSessionInfo(raw) }))
+			)
+		);
 
-		for (const filename of entries.filter(e => e.endsWith('.json'))) {
-			try {
-				const raw = await fsp.readFile(path.join(this.sessionsDir, filename), 'utf-8');
-				newCache.set(filename, JSON.parse(raw) as SessionInfo);
-			} catch {
+		const newCache = new Map<string, SessionInfo>();
+		for (let i = 0; i < jsonFiles.length; i++) {
+			const result = results[i];
+			const filename = jsonFiles[i];
+			if (result.status === 'fulfilled') {
+				newCache.set(filename, result.value.info);
+			} else {
 				const prev = this.cache.get(filename);
 				if (prev !== undefined) newCache.set(filename, prev);
 			}

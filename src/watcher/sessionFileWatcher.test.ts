@@ -264,4 +264,22 @@ describe('SessionFileWatcher', () => {
 		expect(session.status).toBe(fullSession.status);
 		expect(session.updatedAt).toBe(fullSession.updatedAt);
 	});
+
+	it('W14: calling start() twice throws', async () => {
+		watcher = new SessionFileWatcher({ sessionsDir: tmpDir });
+		watcher.start(vi.fn<SessionsChangedCallback>());
+		expect(() => watcher.start(vi.fn<SessionsChangedCallback>())).toThrow('already running');
+	});
+
+	it('W15: valid JSON missing required fields is skipped silently on first encounter', async () => {
+		await fs.writeFile(path.join(tmpDir, 'incomplete.json'), JSON.stringify({ pid: 42 }));
+
+		const onChanged = vi.fn<SessionsChangedCallback>();
+		watcher = new SessionFileWatcher({ sessionsDir: tmpDir });
+		watcher.start(onChanged);
+		await waitForWatchEvent();
+
+		expect(onChanged).toHaveBeenCalledTimes(1);
+		expect(onChanged.mock.calls[0][0]).toEqual([]);
+	});
 });
