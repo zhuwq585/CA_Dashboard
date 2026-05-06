@@ -37,13 +37,33 @@ npm run lint           # ESLint
 
 ## Development Process
 
-This project follows **spec-driven TDD**:
+This project follows **spec-driven TDD** using a **two-agent pattern**:
 
-1. **Design** — establish system architecture before writing any feature code
-2. **Spec** — for each feature, write a detailed spec document in `docs/specs/` before implementation begins
-3. **Red-Green-Refactor** — write failing unit tests first, then implement the minimum code to make them pass, then clean up
+### Two-Agent Pattern
 
-Never write implementation code for a feature without a spec document and failing tests already in place.
+Two distinct agent roles operate in this repo. Each agent must know which role it is playing before acting.
+
+**Main-branch agent** — runs on `main`, never writes implementation code:
+1. Write the spec document for a feature in `docs/specs/<feature-name>.md`
+2. Create a `feature/` branch and a git worktree for it
+3. Open a draft PR for the branch
+4. Hand off to a feature-branch agent by pointing it at the worktree and spec
+
+**Feature-branch agent** — runs inside the feature worktree, never touches `main`:
+1. Read the spec document produced by the main-branch agent
+2. Follow the Red-Green-Refactor cycle: write failing tests → implement → clean up
+3. Push commits to the feature branch
+4. Mark the PR ready for review when all tests pass
+
+### Spec-Driven TDD Cycle
+
+1. **Design** — architecture decisions are captured in `docs/architecture.md` before any feature work
+2. **Spec** — main-branch agent writes `docs/specs/<feature>.md` before any implementation begins
+3. **Red** — feature-branch agent writes failing unit tests that match the spec
+4. **Green** — implement the minimum code to make tests pass
+5. **Refactor** — clean up; tests must still pass
+
+Never write implementation code without a spec. Never write a spec without reading `docs/architecture.md` first.
 
 ## Naming Rules
 
