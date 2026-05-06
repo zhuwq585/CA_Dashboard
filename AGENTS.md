@@ -34,6 +34,7 @@ npm run lint           # ESLint
 - **Test runner**: Vitest — test files live alongside source files (`*.test.ts`)
 - **Linter**: ESLint with `@typescript-eslint`
 - **Code style**: camelCase for variables/functions, PascalCase for types/classes/interfaces; tabs for indentation
+- **Comments**: each function gets one short plain comment describing what it does — no JSDoc, no `@param`/`@returns` tags, no parameter descriptions
 
 ## Development Process
 
