@@ -24,12 +24,18 @@
   },
   "homepage": "https://github.com/zhuwq585/CA_Dashboard#readme",
   "devDependencies": {
+    "@types/react": "^19.2.14",
     "@typescript-eslint/eslint-plugin": "^8.59.2",
     "@typescript-eslint/parser": "^8.59.2",
     "@vitest/coverage-v8": "^4.1.5",
     "eslint": "^10.3.0",
+    "ink-testing-library": "^4.0.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.5"
+  },
+  "dependencies": {
+    "ink": "^7.0.2",
+    "react": "^19.2.5"
   }
 }
