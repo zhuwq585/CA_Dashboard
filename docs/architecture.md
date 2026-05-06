@@ -10,49 +10,64 @@ Claude Code exposes no API for session status. All monitoring is file-based and 
 
 ## Data Source
 
-Each running Claude Code session writes a JSON file to `~/.claude/sessions/<pid>.json`:
+Each running Claude Code session writes a JSON file to `~/.claude/sessions/<pid>.json`. Two schema versions exist:
 
+**Full schema (Claude Code v2.1+):**
 ```json
 {
   "pid": 47779,
   "sessionId": "21de92ae-1da4-4cdd-9ff1-d3fb56d4a6c7",
+  "name": "ca-dashboard-architecture",
   "cwd": "/Users/syu/workspace/CA_Dashboard",
   "startedAt": 1777963944851,
-  "updatedAt": 1777969533142,
-  "status": "busy",
+  "procStart": "Tue May  5 06:52:24 2026",
   "version": "2.1.128",
+  "peerProtocol": 1,
   "kind": "interactive",
-  "entrypoint": "cli"
+  "entrypoint": "cli",
+  "status": "busy",
+  "updatedAt": 1778049097604
 }
 ```
 
-Key fields used by the dashboard:
+**Old schema (pre-name/status era):** only `pid`, `sessionId`, `cwd`, `startedAt`, `kind`, `entrypoint` — no `status`, no `updatedAt`, no `name`.
+
+Key fields:
 
 | Field | Use |
 |---|---|
 | `pid` | Cross-check with OS process list to confirm liveness |
 | `sessionId` | Stable identifier for tracking across file changes |
-| `cwd` | Display project name in the UI |
-| `status` | Primary status signal (`"busy"` observed; other values TBD) |
-| `updatedAt` | Staleness detection — a stale timestamp with a live PID indicates hanging |
+| `startedAt` | Secondary key for detecting PID recycling |
+| `name` | Primary display name (human-readable, set by Claude Code) |
+| `cwd` | Fallback display name (`path.basename(cwd)`) |
+| `status` | Activity signal — only ever observed as `"busy"` while alive |
+| `updatedAt` | Staleness detection for Hanging state |
+
+**Important:** `status` has only been observed as `"busy"` while a process is alive. There are no observed transitions to "idle" or "waiting". Executing vs. Waiting must be inferred from child process inspection, not from `status`.
 
 ---
 
 ## Status Resolution
 
-Status is derived from combining the session file with OS process inspection:
+A single constant governs staleness: `HANGING_THRESHOLD_MS = 120_000` (2 minutes).
 
-| Signals | Derived Status |
-|---|---|
-| `status: "busy"` + recent `updatedAt` + active child processes | **Executing** |
-| `status: "busy"` + recent `updatedAt` + no active child processes | **Waiting** (for user input) |
-| `status` not `"busy"` + recent `updatedAt` | **Idle** |
-| PID alive + `updatedAt` not updated beyond threshold (default: 2 min) | **Hanging** |
-| PID not in OS process list | Session ended — omitted from watch view |
+Decision tree (first match wins):
 
-Process signals:
-- **Liveness**: `ps -p <pid>` — confirms the Claude Code process is still running
-- **Child activity**: `pgrep -P <pid>` — active children indicate the agent is executing a tool
+```
+1. ps -p <pid> fails               →  Dead      (omit from all views)
+2. status field missing             →  Idle      (old schema, insufficient data)
+3. status !== "busy"                →  Idle      (session ended normally)
+4. updatedAt age > THRESHOLD        →  Hanging   (alive but not updating)
+5. real child processes exist*      →  Executing
+6. (default)                        →  Waiting   (busy, recent, no tool children)
+```
+
+\* "Real children" = PIDs returned by `pgrep -P <pid>` whose command name is **not** in `HELPER_PROCESSES = ['caffeinate']`. Claude Code always maintains a `caffeinate` child to prevent system sleep; this must be filtered out or it produces false Executing signals.
+
+### Display Name
+
+Resolved in priority order: `name` field → `path.basename(cwd)` → first 8 chars of `sessionId`.
 
 ---
 
@@ -60,11 +75,11 @@ Process signals:
 
 ```
 src/
-├── types.ts                   # SessionInfo, SessionStatus, WatchedSession
+├── types.ts                   # SessionInfo, SessionStatus, ResolvedSession
 ├── watcher/
-│   └── sessionFileWatcher.ts  # fs.watch on ~/.claude/sessions/ → emits SessionInfo[]
+│   └── sessionFileWatcher.ts  # fs.watch + 100ms debounce → emits SessionInfo[]
 ├── resolver/
-│   └── statusResolver.ts      # SessionInfo + process checks → SessionStatus
+│   └── statusResolver.ts      # decision tree → ResolvedSession[]
 └── ui/
     └── dashboard.tsx          # Ink TUI — watch mode and select mode
 ```
@@ -74,15 +89,31 @@ src/
 ```
 ~/.claude/sessions/*.json
           │
-          ▼
- SessionFileWatcher          (fs.watch + periodic read)
+    ┌─────┴───────────────────┐
+    │ fs.watch (file events)  │
+    │ + 1s periodic tick      │  ← process state can change without file update
+    └─────┬───────────────────┘
           │
           ▼
-   StatusResolver            (ps -p, pgrep -P)
-          │
-          ▼
-   Dashboard (Ink TUI)       (re-renders on state change)
+ SessionFileWatcher ──▶ StatusResolver ──▶ Dashboard (Ink TUI)
+                              │
+                         tinyexec (async):
+                           ps -p <pid>
+                           pgrep -P <pid>
 ```
+
+Two triggers feed the resolver:
+- **File events** (`fs.watch`): session JSON changed → debounce 100ms → re-read → re-resolve
+- **1s periodic tick**: liveness and child processes can change without file writes → re-resolve using cached session data
+
+### Operational Edge Cases
+
+| Case | Handling |
+|---|---|
+| JSON parse failure (mid-write race) | try-catch; retain previous valid value; retry on next event |
+| Dead PID with lingering session file | Resolved as Dead; file left on disk (dashboard never deletes) |
+| Old schema (no `status`/`updatedAt`) | Resolved as Idle; display name via `path.basename(cwd)` |
+| PID recycled by OS | `startedAt` used as secondary key alongside `pid` to detect collision |
 
 ---
 
@@ -90,51 +121,50 @@ src/
 
 Built with **Ink** (React renderer for the terminal). No browser required.
 
-The TUI has two interactive modes:
-
 ### Watch mode (default)
 
-Displays only the sessions the user has selected to watch.
+Displays only sessions the user has selected to watch.
 
 ```
-┌──────────┬───────────┬────────────┬─────────────┐
-│ Session  │ Project   │ Status     │ Last Active │
-├──────────┼───────────┼────────────┼─────────────┤
-│ session1 │ CA_Dash   │ ⚙ Executing│ just now    │
-│ session2 │ InboxOwl  │ ⏳ Waiting │ 12s ago     │
-└──────────┴───────────┴────────────┴─────────────┘
+┌──────────────────────┬────────────┬─────────────┐
+│ Name                 │ Status     │ Last Active │
+├──────────────────────┼────────────┼─────────────┤
+│ ca-dashboard-arch    │ ⚙ Executing│ just now    │
+│ InboxOwl             │ ⏳ Waiting │ 12s ago     │
+└──────────────────────┴────────────┴─────────────┘
 [s] select sessions   [q] quit
 ```
 
 ### Select mode
 
-Lists all discovered sessions. The user toggles which ones to watch with `space`, then confirms with `enter`.
+Lists all discovered sessions. `space` toggles, `enter` confirms, `esc` cancels.
 
 ```
 Select sessions to watch:
-  [✓] session1  CA_Dashboard   (active)
-  [✓] session2  InboxOwl       (active)
-  [ ] session3  api-svc        (ended)
+  [✓] ca-dashboard-arch   CA_Dashboard   (executing)
+  [✓] InboxOwl            InboxOwl       (waiting)
+  [ ] old-session         api-svc        (idle)
 
-↑↓ navigate   space toggle   enter confirm
+↑↓ navigate   space toggle   enter confirm   esc cancel
 ```
 
-### UI state
+### UI State
 
-| State | Type | Description |
+| Field | Type | Description |
 |---|---|---|
-| `allSessions` | `SessionInfo[]` | All sessions discovered by the watcher |
-| `watchedIds` | `Set<string>` | Session IDs selected by the user |
+| `allSessions` | `ResolvedSession[]` | All discovered sessions with resolved status |
+| `watchedIds` | `Set<string>` | `sessionId`s the user has selected — in-memory only, resets on launch |
 | `mode` | `'watch' \| 'select'` | Current UI mode |
 
 ---
 
 ## Tech Stack
 
-| Concern | Choice |
-|---|---|
-| Language | TypeScript (ESM) |
-| Terminal UI | Ink + React |
-| Test runner | Vitest |
-| Linter | ESLint + @typescript-eslint |
-| Process inspection | `child_process.execSync` (no extra deps) |
+| Concern | Choice | Notes |
+|---|---|---|
+| Language | TypeScript (ESM) | |
+| Terminal UI | Ink + React | To be installed |
+| Process inspection | `tinyexec` | Already installed; async, non-blocking (~5–20ms/call) |
+| File watching | Node.js `fs.watch` | macOS FSEvents fires post-write; debounce 100ms |
+| Test runner | Vitest | Already installed |
+| Linter | ESLint + @typescript-eslint | Already installed |
