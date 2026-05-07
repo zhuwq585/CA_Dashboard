@@ -32,9 +32,13 @@ async function isPidAlive(pid: number): Promise<boolean> {
 async function getChildCommands(pid: number): Promise<string[]> {
 	try {
 		const result = await x('pgrep', ['-P', String(pid), '-a']);
+		// pgrep -a output format: "<pid> <command> [args...]" — extract command basename only
 		return result.stdout
 			.split('\n')
-			.map(line => line.trim())
+			.map(line => {
+				const parts = line.trim().split(/\s+/);
+				return parts.length >= 2 ? path.basename(parts[1]) : '';
+			})
 			.filter(Boolean);
 	} catch {
 		return [];

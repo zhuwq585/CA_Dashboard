@@ -28,7 +28,8 @@ function mockPsAndPgrep(pid: number, alive: boolean, children: string[]) {
 			if (children.length === 0) {
 				throw Object.assign(new Error('pgrep no children'), { exitCode: 1 });
 			}
-			return ok(children.join('\n'));
+			// real pgrep -a format: "<pid> <command> [args...]"
+			return ok(children.map((name, i) => `${90000 + i} ${name}`).join('\n'));
 		}
 		return ok();
 	});
@@ -171,7 +172,7 @@ describe('StatusResolver.resolve', () => {
 		mockX.mockImplementation(async (cmd, args) => {
 			if (cmd === 'ps') return ok();
 			if (cmd === 'pgrep') {
-				if (args?.includes('1001')) return ok('node');
+				if (args?.includes('1001')) return ok('90000 node');
 				throw Object.assign(new Error('no children'), { exitCode: 1 });
 			}
 			return ok();
