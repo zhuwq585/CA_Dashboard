@@ -10,6 +10,7 @@ export interface StatusResolverOptions {
 	helperProcesses?: string[];
 }
 
+// Returns the best human-readable name for a session.
 export function resolveDisplayName(session: SessionInfo): string {
 	if (session.name) return session.name;
 	const base = path.basename(session.cwd);
@@ -17,6 +18,7 @@ export function resolveDisplayName(session: SessionInfo): string {
 	return session.sessionId.slice(0, 8);
 }
 
+// Returns true if the process with the given PID is running.
 async function isPidAlive(pid: number): Promise<boolean> {
 	try {
 		await x('ps', ['-p', String(pid)]);
@@ -26,6 +28,7 @@ async function isPidAlive(pid: number): Promise<boolean> {
 	}
 }
 
+// Returns the command names of all child processes of the given PID.
 async function getChildCommands(pid: number): Promise<string[]> {
 	try {
 		const result = await x('pgrep', ['-P', String(pid), '-a']);
@@ -47,10 +50,12 @@ export class StatusResolver {
 		this.helperProcesses = options?.helperProcesses ?? HELPER_PROCESSES;
 	}
 
+	// Resolves the status of all sessions concurrently.
 	async resolve(sessions: SessionInfo[]): Promise<ResolvedSession[]> {
 		return Promise.all(sessions.map(session => this.resolveOne(session)));
 	}
 
+	// Applies the decision tree to a single session and returns its resolved state.
 	private async resolveOne(session: SessionInfo): Promise<ResolvedSession> {
 		const displayName = resolveDisplayName(session);
 		const resolvedAt = Date.now();
