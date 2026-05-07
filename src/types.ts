@@ -1,24 +1,29 @@
-export interface SessionInfo {
-	pid: number;
-	sessionId: string;
-	cwd: string;
-	startedAt: number;
-	name?: string;
-	status?: string;
-	updatedAt?: number;
+export enum SessionStatus {
+	Executing = 'executing',
+	Waiting   = 'waiting',
+	Idle      = 'idle',
+	Hanging   = 'hanging',
+	Dead      = 'dead',
 }
 
-export enum SessionStatus {
-	Executing = 'Executing',
-	Waiting = 'Waiting',
-	Idle = 'Idle',
-	Hanging = 'Hanging',
-	Dead = 'Dead',
+export interface SessionInfo {
+	pid:           number;
+	sessionId:     string;
+	cwd:           string;
+	startedAt:     number;
+	name?:         string;
+	procStart?:    string;
+	version?:      string;
+	peerProtocol?: number;
+	kind?:         string;
+	entrypoint?:   string;
+	status?:       string;
+	updatedAt?:    number;
 }
 
 export interface ResolvedSession {
-	session: SessionInfo;
-	status: SessionStatus;
+	sessionInfo: SessionInfo;
+	status:      SessionStatus;
 	displayName: string;
-	resolvedAt: number;
+	resolvedAt:  number;
 }

@@ -61,28 +61,28 @@ export class StatusResolver {
 		const resolvedAt = Date.now();
 
 		if (!await isPidAlive(session.pid)) {
-			return { session, status: SessionStatus.Dead, displayName, resolvedAt };
+			return { sessionInfo: session, status: SessionStatus.Dead, displayName, resolvedAt };
 		}
 
 		if (session.status === undefined) {
-			return { session, status: SessionStatus.Idle, displayName, resolvedAt };
+			return { sessionInfo: session, status: SessionStatus.Idle, displayName, resolvedAt };
 		}
 
 		if (session.status !== 'busy') {
-			return { session, status: SessionStatus.Idle, displayName, resolvedAt };
+			return { sessionInfo: session, status: SessionStatus.Idle, displayName, resolvedAt };
 		}
 
 		if (session.updatedAt !== undefined && (Date.now() - session.updatedAt) >= this.hangingThresholdMs) {
-			return { session, status: SessionStatus.Hanging, displayName, resolvedAt };
+			return { sessionInfo: session, status: SessionStatus.Hanging, displayName, resolvedAt };
 		}
 
 		const childCommands = await getChildCommands(session.pid);
 		const realChildren = childCommands.filter(cmd => !this.helperProcesses.includes(cmd));
 
 		if (realChildren.length > 0) {
-			return { session, status: SessionStatus.Executing, displayName, resolvedAt };
+			return { sessionInfo: session, status: SessionStatus.Executing, displayName, resolvedAt };
 		}
 
-		return { session, status: SessionStatus.Waiting, displayName, resolvedAt };
+		return { sessionInfo: session, status: SessionStatus.Waiting, displayName, resolvedAt };
 	}
 }
