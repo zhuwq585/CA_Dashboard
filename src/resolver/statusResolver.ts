@@ -3,7 +3,7 @@ import { x } from 'tinyexec';
 import { SessionInfo, SessionStatus, ResolvedSession } from '../types.js';
 import { ConversationLogReader } from '../jsonl/conversationLogReader.js';
 
-const HANGING_THRESHOLD_MS = 120_000;
+const HANGING_THRESHOLD_MS = 120 * 60 * 1000; // 120 minutes
 const HELPER_PROCESSES = ['caffeinate'];
 
 export interface StatusResolverOptions {

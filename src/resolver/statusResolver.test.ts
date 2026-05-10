@@ -108,7 +108,7 @@ describe('StatusResolver.resolve', () => {
 	it('R12: multiple sessions resolved concurrently', async () => {
 		const sessions: SessionInfo[] = [
 			{ ...baseSession, pid: 1001, sessionId: 'sess-1', updatedAt: NOW },
-			{ ...baseSession, pid: 1002, sessionId: 'sess-2', updatedAt: NOW - 121_000 },
+			{ ...baseSession, pid: 1002, sessionId: 'sess-2', updatedAt: NOW - 8_000_000 },
 			{ ...baseSession, pid: 1003, sessionId: 'sess-3' },
 		];
 
@@ -124,7 +124,7 @@ describe('StatusResolver.resolve', () => {
 		const reader = {
 			readState: vi.fn().mockImplementation(async (_cwd: string, sessionId: string) => {
 				if (sessionId === 'sess-1') return { state: { kind: 'pendingToolApproval' as const }, mtimeMs: NOW };
-				if (sessionId === 'sess-2') return { state: { kind: 'assistantDone' as const }, mtimeMs: NOW - 121_000 };
+				if (sessionId === 'sess-2') return { state: { kind: 'assistantDone' as const }, mtimeMs: NOW - 8_000_000 };
 				return { state: { kind: 'unknown' as const } };
 			}),
 		} as unknown as ConversationLogReader;
@@ -195,7 +195,7 @@ describe('StatusResolver.resolve', () => {
 
 	it('R-J5: Hanging — stale JSONL mtime', async () => {
 		mockPsAndPgrep(1234, true, ['bash']);
-		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'pendingToolApproval' }, NOW - 121_000) });
+		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'pendingToolApproval' }, NOW - 8_000_000) });
 		const session = { ...baseSession };
 		const [result] = await resolver.resolve([session]);
 		expect(result.status).toBe(SessionStatus.Hanging);
@@ -217,8 +217,8 @@ describe('StatusResolver.resolve', () => {
 
 	it('R-J8: Hanging — both session.updatedAt and JSONL mtime stale', async () => {
 		mockPsAndPgrep(1234, true, []);
-		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'assistantDone' }, NOW - 121_000) });
-		const session = { ...baseSession, updatedAt: NOW - 121_000 };
+		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'assistantDone' }, NOW - 8_000_000) });
+		const session = { ...baseSession, updatedAt: NOW - 8_000_000 };
 		const [result] = await resolver.resolve([session]);
 		expect(result.status).toBe(SessionStatus.Hanging);
 	});
@@ -227,7 +227,7 @@ describe('StatusResolver.resolve', () => {
 		// JSONL only updates when the tool finishes; session.updatedAt keeps ticking.
 		// Hanging must NOT fire while a real child is still running.
 		mockPsAndPgrep(1234, true, ['bash']);
-		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'pendingToolApproval' }, NOW - 121_000) });
+		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'pendingToolApproval' }, NOW - 8_000_000) });
 		const session = { ...baseSession, updatedAt: NOW };
 		const [result] = await resolver.resolve([session]);
 		expect(result.status).toBe(SessionStatus.Executing);
@@ -238,7 +238,7 @@ describe('StatusResolver.resolve', () => {
 		// by the assistant requesting the tool. Don't misclassify as Hanging.
 		mockPsAndPgrep(1234, true, ['caffeinate']);
 		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'pendingToolApproval' }, NOW) });
-		const session = { ...baseSession, updatedAt: NOW - 121_000 };
+		const session = { ...baseSession, updatedAt: NOW - 8_000_000 };
 		const [result] = await resolver.resolve([session]);
 		expect(result.status).toBe(SessionStatus.Waiting);
 	});

@@ -94,7 +94,7 @@ The reader tails the last 64 KB of the file, drops a trailing partial line, and 
 
 ## Status Resolution
 
-A single constant governs staleness: `HANGING_THRESHOLD_MS = 120_000` (2 minutes).
+A single constant governs staleness: `HANGING_THRESHOLD_MS = 7_200_000` (120 minutes).
 
 Decision tree (first match wins):
 

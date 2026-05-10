@@ -98,7 +98,7 @@ Any I/O or parse error caught at the outer level returns `{ state: { kind: 'unkn
 
 ```typescript
 export interface StatusResolverOptions {
-	hangingThresholdMs?: number;          // default: 120_000
+	hangingThresholdMs?: number;          // default: 7_200_000 (120 minutes)
 	helperProcesses?:    string[];        // default: ['caffeinate']
 	logReader?:          ConversationLogReader;  // default: new ConversationLogReader()
 }
