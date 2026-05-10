@@ -74,6 +74,16 @@ describe('encodeProjectPath', () => {
 	it('C2: encodes root /', () => {
 		expect(encodeProjectPath('/')).toBe('-');
 	});
+
+	it('C2a: replaces underscores with - (matches real Claude Code encoding)', () => {
+		// Empirically observed: Claude Code stores this cwd at
+		// ~/.claude/projects/-Users-syu-workspace-CA-Dashboard/
+		expect(encodeProjectPath('/Users/syu/workspace/CA_Dashboard')).toBe('-Users-syu-workspace-CA-Dashboard');
+	});
+
+	it('C2b: replaces dots and other non-alphanumerics with -', () => {
+		expect(encodeProjectPath('/foo.bar/baz qux')).toBe('-foo-bar-baz-qux');
+	});
 });
 
 describe('ConversationLogReader.readState', () => {

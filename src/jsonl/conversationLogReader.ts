@@ -5,9 +5,11 @@ import type { ConversationState } from '../types.js';
 
 const DEFAULT_TAIL_BYTES = 64 * 1024;
 
-// Encodes a cwd into the JSONL project subdirectory name (every '/' becomes '-').
+// Encodes a cwd into the JSONL project subdirectory name. Claude Code replaces
+// every non-alphanumeric character (including '/', '_', '.') with '-'.
+// Empirically: '/Users/syu/workspace/CA_Dashboard' → '-Users-syu-workspace-CA-Dashboard'.
 export function encodeProjectPath(cwd: string): string {
-	return cwd.replace(/\//g, '-');
+	return cwd.replace(/[^a-zA-Z0-9-]/g, '-');
 }
 
 export interface ConversationLogReaderOptions {
