@@ -72,11 +72,16 @@ export class StatusResolver {
 
 		const { state, mtimeMs } = await this.logReader.readState(session.cwd, session.sessionId);
 
-		// Hanging check: any defined timestamp older than the threshold counts as hanging.
+		// Hanging only when ALL available activity signals are stale. A long-running tool
+		// can leave the JSONL untouched for minutes while session.updatedAt keeps ticking
+		// (or vice versa during an approval prompt) — either signal being fresh means the
+		// session is alive, so don't flag Hanging.
 		const ages: number[] = [];
 		if (session.updatedAt !== undefined) ages.push(resolvedAt - session.updatedAt);
 		if (mtimeMs           !== undefined) ages.push(resolvedAt - mtimeMs);
-		if (ages.some(age => age >= this.hangingThresholdMs)) return make(SessionStatus.Hanging);
+		if (ages.length > 0 && ages.every(age => age >= this.hangingThresholdMs)) {
+			return make(SessionStatus.Hanging);
+		}
 
 		if (state.kind === 'pendingToolApproval') {
 			const childCommands = await getChildCommands(session.pid);

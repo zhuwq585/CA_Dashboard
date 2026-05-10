@@ -113,8 +113,10 @@ export interface StatusResolverOptions {
 
 2. const { state, mtimeMs } = await logReader.readState(cwd, sessionId)
 
-3. session.updatedAt OR mtimeMs older than hangingThresholdMs →  Hanging
-   (only checked when at least one of the two is defined)
+3. ALL defined activity signals (session.updatedAt and mtimeMs) older
+   than hangingThresholdMs                                  →  Hanging
+   (skipped when neither timestamp is defined; either signal being
+    fresh keeps the session out of Hanging)
 
 4. state.kind === 'pendingToolApproval'
    4a. real children exist (filtered against helperProcesses) →  Executing
@@ -168,10 +170,12 @@ Existing `tinyexec` mocking pattern (`vi.mock('tinyexec')`) for `ps`/`pgrep` sta
 | R-J2 | Tool actively running | state = `pendingToolApproval`, children = `['bash']` | `Executing` |
 | R-J3 | Conversation done | state = `assistantDone` | `Waiting` |
 | R-J4 | Model generating response | state = `userTurn` | `Executing` |
-| R-J5 | Stale JSONL mtime triggers Hanging | state = `pendingToolApproval`, `mtimeMs = now - 121_000` | `Hanging` |
+| R-J5 | Stale JSONL mtime triggers Hanging when no `updatedAt` | state = `pendingToolApproval`, `mtimeMs = now - 121_000`, no `updatedAt` | `Hanging` |
 | R-J6 | Unknown state → Idle | state = `unknown` | `Idle` |
 | R-J7 | Dead PID overrides JSONL | `isPidAlive` false, state = `pendingToolApproval` | `Dead` |
-| R-J8 | Stale `session.updatedAt` triggers Hanging | state = `assistantDone`, `session.updatedAt = now - 121_000` | `Hanging` |
+| R-J8 | Hanging when BOTH `updatedAt` and JSONL mtime are stale | state = `assistantDone`, both `now - 121_000` | `Hanging` |
+| R-J9 | NOT Hanging — long-running tool (fresh `updatedAt`, stale mtime, real children) | state = `pendingToolApproval`, mtime stale, `updatedAt = now`, child `bash` | `Executing` |
+| R-J10 | NOT Hanging — approval prompt (stale `updatedAt`, fresh mtime) | state = `pendingToolApproval`, mtime fresh, `updatedAt = now - 121_000`, only `caffeinate` | `Waiting` |
 
 ### Existing resolver tests
 

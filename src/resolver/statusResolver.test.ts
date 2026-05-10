@@ -141,7 +141,7 @@ describe('StatusResolver.resolve', () => {
 		mockPsAndPgrep(1234, true, []);
 		const resolver = new StatusResolver({
 			hangingThresholdMs: 30_000,
-			logReader: stubReader({ kind: 'pendingToolApproval' }, NOW),
+			logReader: stubReader({ kind: 'pendingToolApproval' }, NOW - 31_000),
 		});
 		const session = { ...baseSession, updatedAt: NOW - 31_000 };
 		const [result] = await resolver.resolve([session]);
@@ -215,11 +215,31 @@ describe('StatusResolver.resolve', () => {
 		expect(result.status).toBe(SessionStatus.Dead);
 	});
 
-	it('R-J8: Hanging — stale session.updatedAt', async () => {
+	it('R-J8: Hanging — both session.updatedAt and JSONL mtime stale', async () => {
 		mockPsAndPgrep(1234, true, []);
-		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'assistantDone' }, NOW) });
+		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'assistantDone' }, NOW - 121_000) });
 		const session = { ...baseSession, updatedAt: NOW - 121_000 };
 		const [result] = await resolver.resolve([session]);
 		expect(result.status).toBe(SessionStatus.Hanging);
+	});
+
+	it('R-J9: Executing — long-running tool (fresh updatedAt, stale JSONL mtime)', async () => {
+		// JSONL only updates when the tool finishes; session.updatedAt keeps ticking.
+		// Hanging must NOT fire while a real child is still running.
+		mockPsAndPgrep(1234, true, ['bash']);
+		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'pendingToolApproval' }, NOW - 121_000) });
+		const session = { ...baseSession, updatedAt: NOW };
+		const [result] = await resolver.resolve([session]);
+		expect(result.status).toBe(SessionStatus.Executing);
+	});
+
+	it('R-J10: Waiting — approval-pending with stale updatedAt (JSONL still fresh)', async () => {
+		// Approval prompt: session.updatedAt stops ticking but the JSONL was just updated
+		// by the assistant requesting the tool. Don't misclassify as Hanging.
+		mockPsAndPgrep(1234, true, ['caffeinate']);
+		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'pendingToolApproval' }, NOW) });
+		const session = { ...baseSession, updatedAt: NOW - 121_000 };
+		const [result] = await resolver.resolve([session]);
+		expect(result.status).toBe(SessionStatus.Waiting);
 	});
 });

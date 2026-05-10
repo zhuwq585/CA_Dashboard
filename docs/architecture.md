@@ -101,8 +101,9 @@ Decision tree (first match wins):
 ```
 1. ps -p <pid> fails                                                  →  Dead
 
-2. session.updatedAt OR JSONL mtime older than HANGING_THRESHOLD_MS  →  Hanging
-   (only checked when at least one of the two is defined)
+2. ALL defined activity signals (session.updatedAt and JSONL mtime) older
+   than HANGING_THRESHOLD_MS                                          →  Hanging
+   (skipped when neither timestamp is defined)
 
 3. ConversationState = pendingToolApproval
    3a. real children exist (filtered)                                  →  Executing
@@ -168,6 +169,8 @@ Two triggers feed the resolver:
 | JSON parse failure (mid-write race) | try-catch; retain previous valid value; retry on next event |
 | Dead PID with lingering session file | Resolved as Dead; file left on disk (dashboard never deletes) |
 | Old schema (no `updatedAt`) | Hanging check skipped if both `updatedAt` and JSONL `mtimeMs` are undefined |
+| Long-running tool (fresh `updatedAt`, stale JSONL `mtime`) | NOT Hanging — at least one signal is fresh |
+| Approval prompt (stale `updatedAt`, fresh JSONL `mtime`) | NOT Hanging — at least one signal is fresh |
 | PID recycled by OS | `startedAt` used as secondary key alongside `pid` to detect collision |
 | JSONL file missing | `ConversationState = unknown` → resolved as Idle |
 | JSONL trailing partial line (mid-write race) | Reader drops the partial trailing line and parses the previous well-formed entry |
