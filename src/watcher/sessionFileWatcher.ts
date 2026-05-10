@@ -66,6 +66,18 @@ export class SessionFileWatcher {
 		}, this.tickIntervalMs);
 	}
 
+	// Clears the existing tick interval and recreates it with the new ms value.
+	setTickInterval(ms: number): void {
+		if (this.tickTimer !== null) {
+			clearInterval(this.tickTimer);
+		}
+		this.tickTimer = setInterval(() => {
+			void this.scan().then(sessions => {
+				if (this.active && this.onChanged) this.onChanged(sessions);
+			});
+		}, ms);
+	}
+
 	// Cancels the watcher, tick timer, and any pending debounce; no callbacks fire after this returns.
 	stop(): void {
 		this.active = false;
