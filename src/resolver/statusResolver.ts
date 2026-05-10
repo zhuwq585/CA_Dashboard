@@ -83,6 +83,11 @@ export class StatusResolver {
 			return make(SessionStatus.Hanging);
 		}
 
+		// Claude Code writes status='waiting' (and waitingFor) directly when blocked on
+		// user approval. Trust this — it avoids false Executing classifications when the
+		// tool's host shell (zsh/bash) is already spawned but the command hasn't started.
+		if (session.status === 'waiting') return make(SessionStatus.Waiting);
+
 		if (state.kind === 'pendingToolApproval') {
 			const childCommands = await getChildCommands(session.pid);
 			const realChildren  = childCommands.filter(cmd => !this.helperProcesses.includes(cmd));

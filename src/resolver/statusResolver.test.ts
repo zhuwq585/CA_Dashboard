@@ -233,6 +233,17 @@ describe('StatusResolver.resolve', () => {
 		expect(result.status).toBe(SessionStatus.Executing);
 	});
 
+	it('R-J11: Waiting — session.status="waiting" overrides process tree', async () => {
+		// Approval prompt for a Bash command: zsh is already spawned (will host the
+		// command once approved). Without the status check, the resolver would see
+		// 'zsh' as a real child and classify Executing — wrong.
+		mockPsAndPgrep(1234, true, ['caffeinate', 'zsh']);
+		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'pendingToolApproval' }, NOW) });
+		const session = { ...baseSession, status: 'waiting', updatedAt: NOW };
+		const [result] = await resolver.resolve([session]);
+		expect(result.status).toBe(SessionStatus.Waiting);
+	});
+
 	it('R-J10: Waiting — approval-pending with stale updatedAt (JSONL still fresh)', async () => {
 		// Approval prompt: session.updatedAt stops ticking but the JSONL was just updated
 		// by the assistant requesting the tool. Don't misclassify as Hanging.

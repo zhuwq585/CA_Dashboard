@@ -118,6 +118,10 @@ export interface StatusResolverOptions {
    (skipped when neither timestamp is defined; either signal being
     fresh keeps the session out of Hanging)
 
+3b. session.status === 'waiting'                            →  Waiting
+    (Claude Code writes this directly when blocked on user
+     approval; trust it over child-process inspection)
+
 4. state.kind === 'pendingToolApproval'
    4a. real children exist (filtered against helperProcesses) →  Executing
    4b. otherwise                                              →  Waiting   ← FIX

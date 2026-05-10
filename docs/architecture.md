@@ -105,16 +105,20 @@ Decision tree (first match wins):
    than HANGING_THRESHOLD_MS                                          →  Hanging
    (skipped when neither timestamp is defined)
 
-3. ConversationState = pendingToolApproval
-   3a. real children exist (filtered)                                  →  Executing
-   3b. no real children                                                →  Waiting
+3. session.status === 'waiting'                                       →  Waiting
+   (Claude Code writes this — and `waitingFor` — directly when blocked
+    on user approval; trust it over child-process inspection)
 
-4. ConversationState = userTurn (model generating)                    →  Executing
+4. ConversationState = pendingToolApproval
+   4a. real children exist (filtered)                                  →  Executing
+   4b. no real children                                                →  Waiting
 
-5. ConversationState = assistantDone                                  →  Idle
+5. ConversationState = userTurn (model generating)                    →  Executing
+
+6. ConversationState = assistantDone                                  →  Idle
    (assistant finished; user can give a new task whenever)
 
-6. ConversationState = unknown (no JSONL)                             →  Idle
+7. ConversationState = unknown (no JSONL)                             →  Idle
 ```
 
 "Real children" = PIDs returned by `pgrep -P <pid>` whose command name is **not** in `HELPER_PROCESSES = ['caffeinate']`. Claude Code maintains a persistent `caffeinate` child to prevent system sleep; it must be filtered out or it produces false Executing signals.
