@@ -93,28 +93,34 @@ function hasToolUseBlock(entry: ParsedEntry): boolean {
 		&& entry.message!.content!.some(block => block.type === 'tool_use');
 }
 
-// Maps the parsed entries (in order) to a ConversationState.
+// Maps the parsed entries (in order) to a ConversationState. Synthetic entry
+// types like 'attachment', 'pr-link', 'file-history-snapshot', 'ai-title',
+// 'agent-name', 'last-prompt', 'permission-mode', 'system' are ignored — only
+// 'user' and 'assistant' entries represent real conversation turns.
 function classify(entries: ParsedEntry[]): ConversationState {
 	if (entries.length === 0) return { kind: 'unknown' };
 
-	// Walk backward once, tracking the most recent user entry and the most recent
-	// pending tool_use (assistant with stop_reason 'tool_use' AND a tool_use block).
-	let lastUserIdx = -1;
+	// Walk backward once, tracking the most recent conversation turn, the most
+	// recent user entry, and the most recent pending tool_use (assistant with
+	// stop_reason 'tool_use' AND a tool_use block).
+	let lastConvIdx        = -1;
+	let lastUserIdx        = -1;
 	let lastPendingToolIdx = -1;
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const e = entries[i];
+		const isConv = e.type === 'user' || e.type === 'assistant';
+		if (lastConvIdx === -1 && isConv) lastConvIdx = i;
 		if (lastUserIdx === -1 && e.type === 'user') lastUserIdx = i;
 		if (lastPendingToolIdx === -1
 			&& e.type === 'assistant'
 			&& e.message?.stop_reason === 'tool_use'
 			&& hasToolUseBlock(e)) lastPendingToolIdx = i;
-		if (lastUserIdx !== -1 && lastPendingToolIdx !== -1) break;
+		if (lastConvIdx !== -1 && lastUserIdx !== -1 && lastPendingToolIdx !== -1) break;
 	}
 
+	if (lastConvIdx === -1) return { kind: 'unknown' };
 	if (lastPendingToolIdx > lastUserIdx) return { kind: 'pendingToolApproval' };
-
-	const last = entries[entries.length - 1];
-	if (last.type === 'assistant') return { kind: 'assistantDone' };
-	if (last.type === 'user')      return { kind: 'userTurn' };
-	return { kind: 'unknown' };
+	return entries[lastConvIdx].type === 'assistant'
+		? { kind: 'assistantDone' }
+		: { kind: 'userTurn' };
 }

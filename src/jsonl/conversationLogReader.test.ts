@@ -153,6 +153,36 @@ describe('ConversationLogReader.readState', () => {
 		expect(result.state.kind).toBe('userTurn');
 	});
 
+	const attachment = {
+		type: 'attachment',
+		uuid: 'att-1',
+		timestamp: '2026-05-08T03:19:00.000Z',
+	};
+
+	it('C13: synthetic entries (attachment) after a user turn → still userTurn', async () => {
+		await writeJsonl([assistantEndTurn, userMessage, attachment]);
+		const result = await reader.readState(CWD, SESSION_ID);
+		expect(result.state.kind).toBe('userTurn');
+	});
+
+	it('C14: synthetic entries after an assistant end_turn → still assistantDone', async () => {
+		await writeJsonl([userMessage, assistantEndTurn, attachment]);
+		const result = await reader.readState(CWD, SESSION_ID);
+		expect(result.state.kind).toBe('assistantDone');
+	});
+
+	it('C15: synthetic entries after a pending tool_use → still pendingToolApproval', async () => {
+		await writeJsonl([assistantToolUse, attachment]);
+		const result = await reader.readState(CWD, SESSION_ID);
+		expect(result.state.kind).toBe('pendingToolApproval');
+	});
+
+	it('C16: only synthetic entries → unknown', async () => {
+		await writeJsonl([attachment, { ...attachment, uuid: 'att-2', type: 'pr-link' }]);
+		const result = await reader.readState(CWD, SESSION_ID);
+		expect(result.state.kind).toBe('unknown');
+	});
+
 	it('C12: classifies correctly when file exceeds tailBytes', async () => {
 		// Each filler entry is ~100 bytes; 200 entries puts the file well over 1 KB.
 		const filler = Array.from({ length: 200 }, (_, i) => ({
