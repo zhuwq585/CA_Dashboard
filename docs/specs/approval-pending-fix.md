@@ -124,7 +124,7 @@ export interface StatusResolverOptions {
 
 5. state.kind === 'userTurn'                                  →  Executing
 
-6. state.kind === 'assistantDone'                             →  Waiting
+6. state.kind === 'assistantDone'                             →  Idle
 
 7. state.kind === 'unknown'                                   →  Idle
 ```
@@ -168,7 +168,7 @@ Existing `tinyexec` mocking pattern (`vi.mock('tinyexec')`) for `ps`/`pgrep` sta
 |---|---|---|---|
 | R-J1 | Approval pending, no real children | state = `pendingToolApproval`, children = `['caffeinate']` | `Waiting` |
 | R-J2 | Tool actively running | state = `pendingToolApproval`, children = `['bash']` | `Executing` |
-| R-J3 | Conversation done | state = `assistantDone` | `Waiting` |
+| R-J3 | Conversation done — assistant finished, no pending action | state = `assistantDone` | `Idle` |
 | R-J4 | Model generating response | state = `userTurn` | `Executing` |
 | R-J5 | Stale JSONL mtime triggers Hanging when no `updatedAt` | state = `pendingToolApproval`, `mtimeMs = now - 121_000`, no `updatedAt` | `Hanging` |
 | R-J6 | Unknown state → Idle | state = `unknown` | `Idle` |

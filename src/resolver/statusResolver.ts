@@ -90,7 +90,7 @@ export class StatusResolver {
 		}
 
 		if (state.kind === 'userTurn')      return make(SessionStatus.Executing);
-		if (state.kind === 'assistantDone') return make(SessionStatus.Waiting);
+		if (state.kind === 'assistantDone') return make(SessionStatus.Idle);
 		return make(SessionStatus.Idle);
 	}
 }

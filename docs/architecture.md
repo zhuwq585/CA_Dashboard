@@ -111,7 +111,8 @@ Decision tree (first match wins):
 
 4. ConversationState = userTurn (model generating)                    →  Executing
 
-5. ConversationState = assistantDone                                  →  Waiting
+5. ConversationState = assistantDone                                  →  Idle
+   (assistant finished; user can give a new task whenever)
 
 6. ConversationState = unknown (no JSONL)                             →  Idle
 ```

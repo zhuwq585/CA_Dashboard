@@ -177,12 +177,12 @@ describe('StatusResolver.resolve', () => {
 		expect(result.status).toBe(SessionStatus.Executing);
 	});
 
-	it('R-J3: Waiting — assistantDone', async () => {
+	it('R-J3: Idle — assistantDone (assistant finished, no pending action)', async () => {
 		mockPsAndPgrep(1234, true, []);
 		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'assistantDone' }, NOW) });
 		const session = { ...baseSession, updatedAt: NOW };
 		const [result] = await resolver.resolve([session]);
-		expect(result.status).toBe(SessionStatus.Waiting);
+		expect(result.status).toBe(SessionStatus.Idle);
 	});
 
 	it('R-J4: Executing — userTurn (model generating)', async () => {
