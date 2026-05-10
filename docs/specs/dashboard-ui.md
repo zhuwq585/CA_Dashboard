@@ -115,14 +115,16 @@ Interactive list for choosing which sessions to watch, with rename support.
 
 ```typescript
 interface SelectViewProps {
-	sessions:    ResolvedSession[];      // all sessions, including Dead
-	checkedIds:  Set<string>;            // draft selection (not yet committed)
-	cursor:      number;                 // index of highlighted row
-	customNames: Map<string, string>;    // user-assigned names, keyed by sessionId
-	isRenaming:  boolean;                // true when rename mode is active
-	renameValue: string;                 // current contents of rename buffer
+	sessions:    ResolvedSession[];   // all sessions, including Dead
+	checkedIds:  Set<string>;         // draft selection (not yet committed)
+	cursor:      number;              // index of highlighted row
+	customNames: Map<string, string>; // user-assigned names, keyed by sessionId
+	isRenaming:  boolean;             // true when rename mode is active
+	renameValue: string;              // current contents of rename buffer
 }
 ```
+
+`SelectView` is a pure renderer — it has no callbacks. All keyboard handling lives in `Dashboard` via `useInput`.
 
 ### Rendering (normal)
 

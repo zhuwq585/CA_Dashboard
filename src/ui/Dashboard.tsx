@@ -33,23 +33,21 @@ export function Dashboard({ sessions, onExit, onIntervalChange }: DashboardProps
 	// Detect status transitions and update highlightedIds.
 	useEffect(() => {
 		const prev = prevStatusesRef.current;
-		setHighlightedIds(current => {
-			const next = new Set(current);
-			for (const s of sessions) {
-				const id = s.sessionInfo.sessionId;
-				const prevStatus = prev.get(id);
-				if (prevStatus !== undefined && prevStatus !== s.status) {
-					if (BUSY_STATUSES.has(prevStatus) && ATTENTION_STATUSES.has(s.status)) {
-						next.add(id);
-					} else {
-						next.delete(id);
-					}
+		const next = new Set(highlightedIds);
+		for (const s of sessions) {
+			const id = s.sessionInfo.sessionId;
+			const prevStatus = prev.get(id);
+			if (prevStatus !== undefined && prevStatus !== s.status) {
+				if (BUSY_STATUSES.has(prevStatus) && ATTENTION_STATUSES.has(s.status)) {
+					next.add(id);
+				} else {
+					next.delete(id);
 				}
-				prev.set(id, s.status);
 			}
-			return next;
-		});
-	}, [sessions]);
+		}
+		for (const s of sessions) prev.set(s.sessionInfo.sessionId, s.status);
+		setHighlightedIds(next);
+	}, [sessions]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	// Sort highlighted sessions to top.
 	const sortedSessions = [
@@ -159,19 +157,6 @@ export function Dashboard({ sessions, onExit, onIntervalChange }: DashboardProps
 				customNames={customNames}
 				isRenaming={mode === 'rename'}
 				renameValue={renameBuffer}
-				onCursorMove={delta => setCursor(c => (c + delta + selectSessions.length) % selectSessions.length)}
-				onToggle={() => {
-					const id = selectSessions[clampedCursor]?.sessionInfo.sessionId;
-					if (id) {
-						setPendingIds(prev => {
-							const next = new Set(prev);
-							if (next.has(id)) next.delete(id); else next.add(id);
-							return next;
-						});
-					}
-				}}
-				onConfirm={() => { setWatchedIds(new Set(pendingIds)); setMode('watch'); }}
-				onCancel={() => setMode('watch')}
 			/>
 		);
 	}

@@ -14,10 +14,6 @@ interface SelectViewProps {
 	customNames: Map<string, string>;
 	isRenaming:  boolean;
 	renameValue: string;
-	onCursorMove: (delta: -1 | 1) => void;
-	onToggle: () => void;
-	onConfirm: () => void;
-	onCancel: () => void;
 }
 
 export function SelectView({ sessions, checkedIds, cursor, customNames, isRenaming, renameValue }: SelectViewProps): React.ReactElement {
