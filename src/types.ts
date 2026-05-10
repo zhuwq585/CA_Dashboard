@@ -27,3 +27,9 @@ export interface ResolvedSession {
 	displayName: string;
 	resolvedAt:  number;
 }
+
+export type ConversationState =
+	| { kind: 'pendingToolApproval' }
+	| { kind: 'assistantDone' }
+	| { kind: 'userTurn' }
+	| { kind: 'unknown' };

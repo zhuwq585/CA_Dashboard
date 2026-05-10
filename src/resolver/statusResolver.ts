@@ -1,13 +1,15 @@
 import path from 'node:path';
 import { x } from 'tinyexec';
 import { SessionInfo, SessionStatus, ResolvedSession } from '../types.js';
+import { ConversationLogReader } from '../jsonl/conversationLogReader.js';
 
 const HANGING_THRESHOLD_MS = 120_000;
 const HELPER_PROCESSES = ['caffeinate'];
 
 export interface StatusResolverOptions {
 	hangingThresholdMs?: number;
-	helperProcesses?: string[];
+	helperProcesses?:    string[];
+	logReader?:          ConversationLogReader;
 }
 
 // Returns the best human-readable name for a session.
@@ -32,7 +34,6 @@ async function isPidAlive(pid: number): Promise<boolean> {
 async function getChildCommands(pid: number): Promise<string[]> {
 	try {
 		const result = await x('pgrep', ['-P', String(pid), '-a']);
-		// pgrep -a output format: "<pid> <command> [args...]" — extract command basename only
 		return result.stdout
 			.split('\n')
 			.map(line => {
@@ -47,11 +48,13 @@ async function getChildCommands(pid: number): Promise<string[]> {
 
 export class StatusResolver {
 	private readonly hangingThresholdMs: number;
-	private readonly helperProcesses: string[];
+	private readonly helperProcesses:    string[];
+	private readonly logReader:          ConversationLogReader;
 
 	constructor(options?: StatusResolverOptions) {
 		this.hangingThresholdMs = options?.hangingThresholdMs ?? HANGING_THRESHOLD_MS;
-		this.helperProcesses = options?.helperProcesses ?? HELPER_PROCESSES;
+		this.helperProcesses    = options?.helperProcesses    ?? HELPER_PROCESSES;
+		this.logReader          = options?.logReader          ?? new ConversationLogReader();
 	}
 
 	// Resolves the status of all sessions concurrently.
@@ -59,34 +62,30 @@ export class StatusResolver {
 		return Promise.all(sessions.map(session => this.resolveOne(session)));
 	}
 
-	// Applies the decision tree to a single session and returns its resolved state.
+	// Applies the JSONL-driven decision tree to a single session.
 	private async resolveOne(session: SessionInfo): Promise<ResolvedSession> {
 		const displayName = resolveDisplayName(session);
-		const resolvedAt = Date.now();
+		const resolvedAt  = Date.now();
+		const make = (status: SessionStatus): ResolvedSession => ({ sessionInfo: session, status, displayName, resolvedAt });
 
-		if (!await isPidAlive(session.pid)) {
-			return { sessionInfo: session, status: SessionStatus.Dead, displayName, resolvedAt };
+		if (!await isPidAlive(session.pid)) return make(SessionStatus.Dead);
+
+		const { state, mtimeMs } = await this.logReader.readState(session.cwd, session.sessionId);
+
+		// Hanging check: any defined timestamp older than the threshold counts as hanging.
+		const ages: number[] = [];
+		if (session.updatedAt !== undefined) ages.push(resolvedAt - session.updatedAt);
+		if (mtimeMs           !== undefined) ages.push(resolvedAt - mtimeMs);
+		if (ages.some(age => age >= this.hangingThresholdMs)) return make(SessionStatus.Hanging);
+
+		if (state.kind === 'pendingToolApproval') {
+			const childCommands = await getChildCommands(session.pid);
+			const realChildren  = childCommands.filter(cmd => !this.helperProcesses.includes(cmd));
+			return make(realChildren.length > 0 ? SessionStatus.Executing : SessionStatus.Waiting);
 		}
 
-		if (session.status === undefined) {
-			return { sessionInfo: session, status: SessionStatus.Idle, displayName, resolvedAt };
-		}
-
-		if (session.status !== 'busy') {
-			return { sessionInfo: session, status: SessionStatus.Idle, displayName, resolvedAt };
-		}
-
-		if (session.updatedAt !== undefined && (Date.now() - session.updatedAt) >= this.hangingThresholdMs) {
-			return { sessionInfo: session, status: SessionStatus.Hanging, displayName, resolvedAt };
-		}
-
-		const childCommands = await getChildCommands(session.pid);
-		const realChildren = childCommands.filter(cmd => !this.helperProcesses.includes(cmd));
-
-		if (realChildren.length > 0) {
-			return { sessionInfo: session, status: SessionStatus.Executing, displayName, resolvedAt };
-		}
-
-		return { sessionInfo: session, status: SessionStatus.Waiting, displayName, resolvedAt };
+		if (state.kind === 'userTurn')      return make(SessionStatus.Executing);
+		if (state.kind === 'assistantDone') return make(SessionStatus.Waiting);
+		return make(SessionStatus.Idle);
 	}
 }
