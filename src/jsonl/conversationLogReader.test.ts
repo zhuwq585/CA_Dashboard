@@ -106,6 +106,7 @@ describe('ConversationLogReader.readState', () => {
 		await fs.writeFile(file, '');
 		const result = await reader.readState(CWD, SESSION_ID);
 		expect(result.state.kind).toBe('unknown');
+		expect(result.mtimeMs).toBeDefined();
 	});
 
 	it('C8: skips trailing partial line and reads previous full line', async () => {
@@ -134,5 +135,11 @@ describe('ConversationLogReader.readState', () => {
 		const result = await reader.readState(CWD, SESSION_ID);
 		expect(result.mtimeMs).toBeDefined();
 		expect(Math.abs((result.mtimeMs ?? 0) - stat.mtimeMs)).toBeLessThan(5);
+	});
+
+	it('C11: userTurn when tool_use is followed by a user message (tool_result returned)', async () => {
+		await writeJsonl([assistantToolUse, userMessage]);
+		const result = await reader.readState(CWD, SESSION_ID);
+		expect(result.state.kind).toBe('userTurn');
 	});
 });
