@@ -142,4 +142,22 @@ describe('ConversationLogReader.readState', () => {
 		const result = await reader.readState(CWD, SESSION_ID);
 		expect(result.state.kind).toBe('userTurn');
 	});
+
+	it('C12: classifies correctly when file exceeds tailBytes', async () => {
+		// Each filler entry is ~100 bytes; 200 entries puts the file well over 1 KB.
+		const filler = Array.from({ length: 200 }, (_, i) => ({
+			...assistantEndTurn,
+			uuid: `filler-${i}`,
+		}));
+		await writeJsonl([...filler, assistantToolUse]);
+
+		const reader1k = new ConversationLogReader({ jsonlRoot: tmpDir, tailBytes: 1024 });
+		const result   = await reader1k.readState(CWD, SESSION_ID);
+		expect(result.state.kind).toBe('pendingToolApproval');
+
+		// With a tailBytes smaller than any single entry, every parse fails → unknown.
+		const reader30 = new ConversationLogReader({ jsonlRoot: tmpDir, tailBytes: 30 });
+		const tiny     = await reader30.readState(CWD, SESSION_ID);
+		expect(tiny.state.kind).toBe('unknown');
+	});
 });

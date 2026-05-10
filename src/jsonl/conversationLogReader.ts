@@ -95,28 +95,24 @@ function hasToolUseBlock(entry: ParsedEntry): boolean {
 function classify(entries: ParsedEntry[]): ConversationState {
 	if (entries.length === 0) return { kind: 'unknown' };
 
-	// Find the last user entry index to determine whether a pending tool_use is still pending.
+	// Walk backward once, tracking the most recent user entry and the most recent
+	// pending tool_use (assistant with stop_reason 'tool_use' AND a tool_use block).
 	let lastUserIdx = -1;
-	for (let i = entries.length - 1; i >= 0; i--) {
-		if (entries[i].type === 'user') { lastUserIdx = i; break; }
-	}
-
-	// Find the last assistant entry whose stop_reason was tool_use AND that included a tool_use block.
 	let lastPendingToolIdx = -1;
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const e = entries[i];
-		if (e.type === 'assistant' && e.message?.stop_reason === 'tool_use' && hasToolUseBlock(e)) {
-			lastPendingToolIdx = i;
-			break;
-		}
+		if (lastUserIdx === -1 && e.type === 'user') lastUserIdx = i;
+		if (lastPendingToolIdx === -1
+			&& e.type === 'assistant'
+			&& e.message?.stop_reason === 'tool_use'
+			&& hasToolUseBlock(e)) lastPendingToolIdx = i;
+		if (lastUserIdx !== -1 && lastPendingToolIdx !== -1) break;
 	}
 
-	if (lastPendingToolIdx > lastUserIdx) {
-		return { kind: 'pendingToolApproval' };
-	}
+	if (lastPendingToolIdx > lastUserIdx) return { kind: 'pendingToolApproval' };
 
 	const last = entries[entries.length - 1];
 	if (last.type === 'assistant') return { kind: 'assistantDone' };
-	if (last.type === 'user') return { kind: 'userTurn' };
+	if (last.type === 'user')      return { kind: 'userTurn' };
 	return { kind: 'unknown' };
 }
