@@ -1,25 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { x, type Output } from 'tinyexec';
+import { x, type Output, type Result } from 'tinyexec';
 import { SessionInfo, SessionStatus } from '../types.js';
 import { StatusResolver, resolveDisplayName } from './statusResolver.js';
 
 vi.mock('tinyexec');
 const mockX = vi.mocked(x);
 
-const ok = (stdout = ''): Output => ({ stdout, stderr: '', exitCode: 0 });
+const ok = (stdout = ''): Result => ({ stdout, stderr: '', exitCode: 0 } as unknown as Result);
 
 function mockPs(pid: number, alive: boolean) {
-	mockX.mockImplementation(async (cmd, args) => {
+	mockX.mockImplementation((async (cmd: string, args?: string[]) => {
 		if (cmd === 'ps' && args?.includes(String(pid))) {
 			if (!alive) throw Object.assign(new Error('ps failed'), { exitCode: 1 });
 			return ok();
 		}
 		return ok();
-	});
+	}) as unknown as typeof x);
 }
 
 function mockPsAndPgrep(pid: number, alive: boolean, children: string[]) {
-	mockX.mockImplementation(async (cmd, args) => {
+	mockX.mockImplementation((async (cmd: string, args?: string[]) => {
 		if (cmd === 'ps' && args?.includes(String(pid))) {
 			if (!alive) throw Object.assign(new Error('ps failed'), { exitCode: 1 });
 			return ok();
@@ -32,7 +32,7 @@ function mockPsAndPgrep(pid: number, alive: boolean, children: string[]) {
 			return ok(children.map((name, i) => `${90000 + i} ${name}`).join('\n'));
 		}
 		return ok();
-	});
+	}) as unknown as typeof x);
 }
 
 const baseSession: SessionInfo = {
@@ -169,14 +169,14 @@ describe('StatusResolver.resolve', () => {
 			{ ...baseSession, pid: 1003, sessionId: 'sess-3' },
 		];
 
-		mockX.mockImplementation(async (cmd, args) => {
+		mockX.mockImplementation((async (cmd: string, args?: string[]) => {
 			if (cmd === 'ps') return ok();
 			if (cmd === 'pgrep') {
 				if (args?.includes('1001')) return ok('90000 node');
 				throw Object.assign(new Error('no children'), { exitCode: 1 });
 			}
 			return ok();
-		});
+		}) as unknown as typeof x);
 
 		const resolver = new StatusResolver();
 		const results = await resolver.resolve(sessions);
