@@ -41,7 +41,7 @@ export function WatchView({ sessions, cursor, highlightedIds, customNames }: Wat
 								</Text>
 							</Box>
 							<Text inverse={isCursor} bold={isHighlight} color={isHighlight ? 'yellow' : undefined}>
-								{formatRelativeTime(s.sessionInfo.updatedAt)}
+								{formatRelativeTime(s.lastActiveMs ?? s.sessionInfo.updatedAt)}
 							</Text>
 						</Box>
 					);

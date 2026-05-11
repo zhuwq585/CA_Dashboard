@@ -21,6 +21,13 @@ export interface StatusResolverOptions {
 	logReader?:          ConversationLogReader;
 }
 
+// Returns the maximum of two optional epoch-ms values, or undefined if both are absent.
+function pickLatest(a: number | undefined, b: number | undefined): number | undefined {
+	if (a === undefined) return b;
+	if (b === undefined) return a;
+	return Math.max(a, b);
+}
+
 // Returns the best human-readable name for a session.
 export function resolveDisplayName(session: SessionInfo): string {
 	if (session.name) return session.name;
@@ -79,11 +86,17 @@ export class StatusResolver {
 	private async resolveOne(session: SessionInfo): Promise<ResolvedSession> {
 		const displayName = resolveDisplayName(session);
 		const resolvedAt  = Date.now();
-		const make = (status: SessionStatus): ResolvedSession => ({ sessionInfo: session, status, displayName, resolvedAt });
 
-		if (!await isPidAlive(session.pid)) return make(SessionStatus.Dead);
+		if (!await isPidAlive(session.pid)) {
+			return { sessionInfo: session, status: SessionStatus.Dead, displayName, resolvedAt };
+		}
 
 		const { state, mtimeMs } = await this.logReader.readState(session.cwd, session.sessionId);
+
+		// Most recent of session.updatedAt and JSONL mtime — used for Hanging check and
+		// rendered as "Last Active" by the UI. Falls back gracefully when either is missing.
+		const lastActiveMs = pickLatest(session.updatedAt, mtimeMs);
+		const make = (status: SessionStatus): ResolvedSession => ({ sessionInfo: session, status, displayName, resolvedAt, lastActiveMs });
 
 		// Hanging only when ALL available activity signals are stale. A long-running tool
 		// can leave the JSONL untouched for minutes while session.updatedAt keeps ticking

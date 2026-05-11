@@ -243,6 +243,24 @@ describe('StatusResolver.resolve', () => {
 		expect(result.status).toBe(SessionStatus.Waiting);
 	});
 
+	it('R-J12: lastActiveMs falls back to JSONL mtime when updatedAt is missing', async () => {
+		// Older Claude Code (and likely Linux builds) don't write updatedAt. The UI's
+		// "Last Active" column would otherwise show "unknown". JSONL mtime is the fallback.
+		mockPsAndPgrep(1234, true, []);
+		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'assistantDone' }, NOW - 30_000) });
+		const session = { ...baseSession };  // no updatedAt
+		const [result] = await resolver.resolve([session]);
+		expect(result.lastActiveMs).toBe(NOW - 30_000);
+	});
+
+	it('R-J13: lastActiveMs picks the more recent of updatedAt and mtime', async () => {
+		mockPsAndPgrep(1234, true, []);
+		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'assistantDone' }, NOW - 5_000) });
+		const session = { ...baseSession, updatedAt: NOW - 20_000 };
+		const [result] = await resolver.resolve([session]);
+		expect(result.lastActiveMs).toBe(NOW - 5_000);
+	});
+
 	it('R-J11: Waiting — session.status="waiting" overrides process tree', async () => {
 		// Approval prompt for a Bash command: zsh is already spawned (will host the
 		// command once approved). Without the status check, the resolver would see
