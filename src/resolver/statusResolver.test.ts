@@ -233,6 +233,16 @@ describe('StatusResolver.resolve', () => {
 		expect(result.status).toBe(SessionStatus.Executing);
 	});
 
+	it('R-J11b: systemd-inhibit is filtered (Linux parity with caffeinate)', async () => {
+		// On Linux, Claude Code uses systemd-inhibit instead of caffeinate to keep
+		// the system awake. It must be treated as a helper, not a real child.
+		mockPsAndPgrep(1234, true, ['systemd-inhibit']);
+		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'pendingToolApproval' }, NOW) });
+		const session = { ...baseSession, updatedAt: NOW };
+		const [result] = await resolver.resolve([session]);
+		expect(result.status).toBe(SessionStatus.Waiting);
+	});
+
 	it('R-J11: Waiting — session.status="waiting" overrides process tree', async () => {
 		// Approval prompt for a Bash command: zsh is already spawned (will host the
 		// command once approved). Without the status check, the resolver would see

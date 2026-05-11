@@ -4,7 +4,16 @@ import { SessionInfo, SessionStatus, ResolvedSession } from '../types.js';
 import { ConversationLogReader } from '../jsonl/conversationLogReader.js';
 
 const HANGING_THRESHOLD_MS = 120 * 60 * 1000; // 120 minutes
-const HELPER_PROCESSES = ['caffeinate'];
+
+// Persistent helper processes Claude Code spawns to keep the system awake.
+// They appear in pgrep output even when no tool is running, so they must be
+// filtered out before deciding whether a "real" tool child is active.
+//   macOS:  caffeinate
+//   Linux:  systemd-inhibit
+// Tool host shells (zsh/bash/sh) are deliberately NOT listed here: when a
+// Bash tool is genuinely executing, the shell is the active host of that
+// command and we want it counted as a real child.
+const HELPER_PROCESSES = ['caffeinate', 'systemd-inhibit'];
 
 export interface StatusResolverOptions {
 	hangingThresholdMs?: number;
@@ -31,9 +40,13 @@ async function isPidAlive(pid: number): Promise<boolean> {
 }
 
 // Returns the command names of all child processes of the given PID.
+// Uses 'pgrep -l' (NOT '-a'): -l is supported on both macOS BSD pgrep and
+// Linux procps pgrep, and outputs "pid name" (just the short command, no args).
+// On macOS, '-a' is silently treated as a search pattern matching 'a' in the
+// command name — a subtle bug that masked all real children.
 async function getChildCommands(pid: number): Promise<string[]> {
 	try {
-		const result = await x('pgrep', ['-P', String(pid), '-a']);
+		const result = await x('pgrep', ['-P', String(pid), '-l']);
 		return result.stdout
 			.split('\n')
 			.map(line => {
