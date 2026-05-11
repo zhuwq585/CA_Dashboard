@@ -22,8 +22,15 @@ export interface SessionInfo {
 }
 
 export interface ResolvedSession {
-	sessionInfo: SessionInfo;
-	status:      SessionStatus;
-	displayName: string;
-	resolvedAt:  number;
+	sessionInfo:    SessionInfo;
+	status:         SessionStatus;
+	displayName:    string;
+	resolvedAt:     number;
+	lastActiveMs?:  number;  // best available "last activity" timestamp: max(updatedAt, JSONL mtime)
 }
+
+export type ConversationState =
+	| { kind: 'pendingToolApproval' }
+	| { kind: 'assistantDone' }
+	| { kind: 'userTurn' }
+	| { kind: 'unknown' };
