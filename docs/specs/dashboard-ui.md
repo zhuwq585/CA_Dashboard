@@ -538,3 +538,113 @@ const deadSession      = makeSession({ status: SessionStatus.Dead,      displayN
 | U48 | Highlight auto-clears on status change back to busy | highlight session; rerender as executing | row no longer highlighted |
 | U49 | `d` dismisses highlight on cursor row | highlight session at watchCursor 0; press `d` | row no longer highlighted |
 | U50 | Non-transitioning session not highlighted | render session; rerender same status | no highlight indicators |
+
+---
+
+## UI Improvements Round 2
+
+### Vertical scroll
+
+When the session list exceeds terminal height, each view scrolls so the cursor row is always visible.
+
+**Scroll formula** (used in `WatchView` and `SelectView`):
+
+```typescript
+const { columns, rows } = useWindowSize();
+const FIXED_ROWS = /* view-specific */;
+const visibleCount  = Math.max(1, rows - FIXED_ROWS);
+const maxOffset     = Math.max(0, sessions.length - visibleCount);
+const idealOffset   = cursor - Math.floor(visibleCount / 2);
+const scrollOffset  = Math.max(0, Math.min(maxOffset, idealOffset));
+const visibleSessions = sessions.slice(scrollOffset, scrollOffset + visibleCount);
+```
+
+In the row map loop, `isCursor` compares `scrollOffset + i === cursor` (full-array index, not slice index).
+
+**Scroll indicators** — shown when content is cut off:
+
+- `↑ N more` above the list when `scrollOffset > 0`
+- `↓ N more` below the list when `scrollOffset + visibleCount < sessions.length`
+
+`FIXED_ROWS` constants:
+- `WatchView`: 6 (title 1 + scroll-top 1 + scroll-bottom 1 + hint 1 + status-counts 1 + padding 1)
+- `SelectView`: 5 (title 1 + header 1 + scroll-top 1 + scroll-bottom 1 + hint 1)
+
+### Quick hide (`x` key in watch mode)
+
+Pressing `x` in watch mode hides the cursor session from the watch view without entering select mode.
+
+- New state `hiddenIds: Set<string>` in `Dashboard`
+- `watchSessions` filter excludes hidden sessions (applied after watchedIds/Dead filter)
+- In select mode, hidden sessions show `[~]` checkbox marker (instead of `[ ]` or `[✓]`)
+- Pressing `space` on a `[~]` row removes the session from `hiddenIds` and adds it to `pendingIds`
+- `x` in select/rename/settings mode has no effect
+- Hint bar updated: `[x] hide` added
+
+### Pre-select visible sessions
+
+When pressing `s` to enter select mode, `pendingIds` is pre-filled with the IDs of all currently visible watch-view sessions (those that would show without further interaction):
+
+```typescript
+// Old:
+setPendingIds(new Set(watchedIds));
+// New:
+setPendingIds(new Set(watchSessions.map(s => s.sessionInfo.sessionId)));
+```
+
+This means entering select starts with all visible sessions checked, and the user deselects what they don't want.
+
+### Title bar
+
+`Dashboard` renders `<Text bold>CA Dashboard</Text>` above every view using a wrapper `<Box flexDirection="column">`. This means the title appears in all modes (watch, select/rename, settings) without each view needing to know about it.
+
+### Status counts
+
+`WatchView` receives an `allSessions: ResolvedSession[]` prop (the raw unfiltered session list from `Dashboard`). It computes per-status counts and renders them below the hint bar:
+
+```
+1 executing · 2 waiting · 1 idle
+```
+
+- Order: `Executing · Waiting · Idle · Hanging · Dead`
+- Only statuses with count > 0 are shown
+- Rendered `dimColor`
+- Uses ALL sessions, not just the filtered watch list
+
+### Test cases (V1–V11)
+
+**Vertical scroll (V1–V3)**
+
+| ID | Description | Action | Assert |
+|---|---|---|---|
+| V1 | With 20 sessions, only a subset is rendered | render 20 sessions | `visibleCount < 20` |
+| V2 | Moving cursor down scrolls viewport | press `j` 15 times with 20 sessions | `scroll-sess-15` visible in frame |
+| V3 | `↓` indicator appears when content overflows below | render 20 sessions | frame contains `↓` |
+
+**Quick hide (V4–V7)**
+
+| ID | Description | Action | Assert |
+|---|---|---|---|
+| V4 | `x` hides cursor session from watch view | render 2 sessions; press `x` | hidden session no longer in frame |
+| V5 | Hidden session shows `[~]` in select mode | hide session; enter select; navigate cursor away | `[~]` in frame |
+| V6 | Space on `[~]` row unhides and checks session | hide session; enter select; press `space` | `[~]` gone; `[✓]` present |
+| V7 | `x` in select mode has no effect | enter select; press `x` | frame unchanged |
+
+**Pre-select (V8)**
+
+| ID | Description | Action | Assert |
+|---|---|---|---|
+| V8 | Entering select pre-checks all visible sessions | enter select | no `[ ]` in frame (all checked or cursor) |
+
+**Title bar (V9)**
+
+| ID | Description | Action | Assert |
+|---|---|---|---|
+| V9 | `CA Dashboard` appears in all modes | check watch, select, settings modes | `CA Dashboard` in each frame |
+
+**Status counts (V10–V11)**
+
+| ID | Description | Action | Assert |
+|---|---|---|---|
+| V10 | Status count bar shows correct counts | render exec + wait + idle | `1 executing`, `1 waiting`, `1 idle` in frame |
+| V11 | Counts reflect ALL sessions, not just watched | commit a subset; dead session excluded from watch | `1 dead` still in frame |

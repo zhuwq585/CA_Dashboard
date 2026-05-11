@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useInput } from 'ink';
+import { Box, Text, useInput } from 'ink';
 import { SessionStatus } from '../types.js';
 import type { ResolvedSession } from '../types.js';
 import { WatchView } from './WatchView.js';
@@ -29,6 +29,7 @@ export function Dashboard({ sessions, onExit, onIntervalChange }: DashboardProps
 	const [intervalIdx, setIntervalIdx] = useState<number>(1);
 	const prevStatusesRef = useRef<Map<string, SessionStatus>>(new Map());
 	const [highlightedIds, setHighlightedIds] = useState<Set<string>>(new Set());
+	const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
 
 	// Detect status transitions and update highlightedIds.
 	useEffect(() => {
@@ -59,9 +60,10 @@ export function Dashboard({ sessions, onExit, onIntervalChange }: DashboardProps
 
 	const clampedCursor = Math.min(cursor, Math.max(0, selectSessions.length - 1));
 
-	const watchSessions = watchedIds.size === 0
+	const watchSessions = (watchedIds.size === 0
 		? sortedSessions.filter(s => s.status !== SessionStatus.Dead)
-		: sortedSessions.filter(s => watchedIds.has(s.sessionInfo.sessionId) && s.status !== SessionStatus.Dead);
+		: sortedSessions.filter(s => watchedIds.has(s.sessionInfo.sessionId) && s.status !== SessionStatus.Dead)
+	).filter(s => !hiddenIds.has(s.sessionInfo.sessionId));
 
 	const clampedWatchCursor = Math.min(watchCursor, Math.max(0, watchSessions.length - 1));
 
@@ -74,8 +76,11 @@ export function Dashboard({ sessions, onExit, onIntervalChange }: DashboardProps
 			} else if (input === 'd') {
 				const id = watchSessions[clampedWatchCursor]?.sessionInfo.sessionId;
 				if (id) setHighlightedIds(prev => { const next = new Set(prev); next.delete(id); return next; });
+			} else if (input === 'x') {
+				const id = watchSessions[clampedWatchCursor]?.sessionInfo.sessionId;
+				if (id) setHiddenIds(prev => { const next = new Set(prev); next.add(id); return next; });
 			} else if (input === 's') {
-				setPendingIds(new Set(watchedIds));
+				setPendingIds(new Set(watchSessions.map(s => s.sessionInfo.sessionId)));
 				setCursor(0);
 				setMode('select');
 			} else if (input === 't') {
@@ -93,11 +98,16 @@ export function Dashboard({ sessions, onExit, onIntervalChange }: DashboardProps
 			} else if (input === ' ') {
 				const id = selectSessions[clampedCursor]?.sessionInfo.sessionId;
 				if (id) {
-					setPendingIds(prev => {
-						const next = new Set(prev);
-						if (next.has(id)) next.delete(id); else next.add(id);
-						return next;
-					});
+					if (hiddenIds.has(id)) {
+						setHiddenIds(prev => { const next = new Set(prev); next.delete(id); return next; });
+						setPendingIds(prev => { const next = new Set(prev); next.add(id); return next; });
+					} else {
+						setPendingIds(prev => {
+							const next = new Set(prev);
+							if (next.has(id)) next.delete(id); else next.add(id);
+							return next;
+						});
+					}
 				}
 			} else if (input === 'r') {
 				const s = selectSessions[clampedCursor];
@@ -148,28 +158,42 @@ export function Dashboard({ sessions, onExit, onIntervalChange }: DashboardProps
 		}
 	});
 
+	const title = <Text bold>CA Dashboard</Text>;
+
 	if (mode === 'select' || mode === 'rename') {
 		return (
-			<SelectView
-				sessions={selectSessions}
-				checkedIds={pendingIds}
-				cursor={clampedCursor}
-				customNames={customNames}
-				isRenaming={mode === 'rename'}
-				renameValue={renameBuffer}
-			/>
+			<Box flexDirection="column">
+				{title}
+				<SelectView
+					sessions={selectSessions}
+					checkedIds={pendingIds}
+					cursor={clampedCursor}
+					customNames={customNames}
+					isRenaming={mode === 'rename'}
+					renameValue={renameBuffer}
+					hiddenIds={hiddenIds}
+				/>
+			</Box>
 		);
 	}
 
 	if (mode === 'settings') {
 		return (
-			<SettingsView
-				intervalMs={PRESETS_MS[intervalIdx]}
-				presets={PRESETS_MS}
-				labels={PRESET_LABELS}
-			/>
+			<Box flexDirection="column">
+				{title}
+				<SettingsView
+					intervalMs={PRESETS_MS[intervalIdx]}
+					presets={PRESETS_MS}
+					labels={PRESET_LABELS}
+				/>
+			</Box>
 		);
 	}
 
-	return <WatchView sessions={watchSessions} cursor={clampedWatchCursor} highlightedIds={highlightedIds} customNames={customNames} />;
+	return (
+		<Box flexDirection="column">
+			{title}
+			<WatchView sessions={watchSessions} allSessions={sessions} cursor={clampedWatchCursor} highlightedIds={highlightedIds} customNames={customNames} />
+		</Box>
+	);
 }
