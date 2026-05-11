@@ -5,6 +5,15 @@ import { SessionStatus } from '../types.js';
 import type { ResolvedSession } from '../types.js';
 import { Dashboard } from './Dashboard.js';
 
+// Mock useWindowSize so scroll tests can control terminal rows.
+// Default returns a large terminal (999 rows) matching ink-testing-library behaviour;
+// scroll tests override rows to a small value.
+vi.mock('ink', async () => {
+	const actual = await vi.importActual<typeof import('ink')>('ink');
+	return { ...actual, useWindowSize: vi.fn().mockReturnValue({ columns: 100, rows: 999 }) };
+});
+import * as ink from 'ink';
+
 // Yield to the event loop so Ink's effects run and React re-renders flush.
 const tick = () => Promise.resolve();
 // Wait long enough for Ink's 20ms pending-escape flush timer.
@@ -846,15 +855,22 @@ const makeMany = (n: number): ResolvedSession[] =>
 	);
 
 describe('Vertical scroll', () => {
+	// Force a small terminal height so 20 sessions exceed the viewport.
+	beforeEach(() => {
+		vi.mocked(ink.useWindowSize).mockReturnValue({ columns: 100, rows: 12 });
+	});
+	afterEach(() => {
+		vi.mocked(ink.useWindowSize).mockReturnValue({ columns: 100, rows: 999 });
+	});
+
 	it('V1: with more sessions than terminal height, only a subset is shown', async () => {
-		// ink-testing-library sets rows to 24 by default; 20 sessions > usable space
+		// rows=12, FIXED_ROWS=6 → visibleCount=6; 20 sessions far exceeds viewport
 		const sessions = makeMany(20);
 		const { lastFrame } = render(
 			React.createElement(Dashboard, { sessions, onExit: vi.fn() })
 		);
 		await tick();
 		const frame = lastFrame()!;
-		// Not all 20 should appear — some are off-screen
 		const visibleCount = sessions.filter(s => frame.includes(s.displayName)).length;
 		expect(visibleCount).toBeLessThan(20);
 	});
