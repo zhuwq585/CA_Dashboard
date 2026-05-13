@@ -5,6 +5,15 @@ import { SessionStatus } from '../types.js';
 import type { ResolvedSession } from '../types.js';
 import { Dashboard } from './Dashboard.js';
 
+// Mock useWindowSize so scroll tests can control terminal rows.
+// Default returns a large terminal (999 rows) matching ink-testing-library behaviour;
+// scroll tests override rows to a small value.
+vi.mock('ink', async () => {
+	const actual = await vi.importActual<typeof import('ink')>('ink');
+	return { ...actual, useWindowSize: vi.fn().mockReturnValue({ columns: 100, rows: 999 }) };
+});
+import * as ink from 'ink';
+
 // Yield to the event loop so Ink's effects run and React re-renders flush.
 const tick = () => Promise.resolve();
 // Wait long enough for Ink's 20ms pending-escape flush timer.
@@ -59,9 +68,11 @@ describe('Watch mode — display', () => {
 			})
 		);
 		await tick();
-		stdin.write('s'); await tick(); // enter select, cursor at proj-exec
-		stdin.write(' '); await tick(); // toggle proj-exec on
-		stdin.write('\r'); await tick(); // confirm
+		// Pre-select pre-checks both; remove wait to keep only exec
+		stdin.write('s');      await tick(); // enter select; pendingIds = {exec, wait}
+		stdin.write('\x1B[B'); await tick(); // down → cursor=1 (wait)
+		stdin.write(' ');      await tick(); // toggle wait off → pendingIds = {exec}
+		stdin.write('\r');     await tick(); // confirm → watchedIds = {exec}
 		const frame = lastFrame()!;
 		expect(frame).toContain('proj-exec');
 		expect(frame).not.toContain('proj-wait');
@@ -174,7 +185,10 @@ describe('Select mode — display', () => {
 			})
 		);
 		await tick();
-		stdin.write('s'); await tick(); // cursor at 0 → [►] proj-exec; proj-wait shows [ ]
+		// Pre-select pre-checks both; toggle exec off then move cursor away so exec shows [ ]
+		stdin.write('s');      await tick(); // enter select; pendingIds = {exec, wait}
+		stdin.write(' ');      await tick(); // toggle exec off → pendingIds = {wait}
+		stdin.write('\x1B[B'); await tick(); // down → cursor=1; exec (row 0) shows [ ]
 		expect(lastFrame()!).toContain('[ ]');
 	});
 
@@ -186,9 +200,9 @@ describe('Select mode — display', () => {
 			})
 		);
 		await tick();
-		stdin.write('s');      await tick(); // cursor at 0 (proj-exec)
-		stdin.write(' ');      await tick(); // toggle proj-exec on (cursor still at 0 → [►])
-		stdin.write('\x1B[B'); await tick(); // move cursor down → proj-exec now shows [✓]
+		// Pre-select pre-checks both; move cursor down to see exec checked as [✓]
+		stdin.write('s');      await tick(); // cursor at 0 (proj-exec, pre-checked)
+		stdin.write('\x1B[B'); await tick(); // move cursor down → proj-exec (row 0) shows [✓]
 		expect(lastFrame()!).toContain('[✓]');
 	});
 
@@ -280,9 +294,11 @@ describe('Select mode — keyboard', () => {
 			})
 		);
 		await tick();
-		stdin.write('s');      await tick(); // cursor at 0 (proj-exec)
-		stdin.write(' ');      await tick(); // toggle proj-exec on
-		stdin.write('\x1B[B'); await tick(); // move cursor to 1 → proj-exec shows [✓]
+		// Pre-select pre-checks both; toggle exec off then back on to demonstrate toggle-on
+		stdin.write('s');      await tick(); // cursor at 0 (proj-exec, pre-checked)
+		stdin.write(' ');      await tick(); // toggle exec off → not checked
+		stdin.write(' ');      await tick(); // toggle exec on → checked again
+		stdin.write('\x1B[B'); await tick(); // move cursor to 1 → proj-exec (row 0) shows [✓]
 		expect(lastFrame()!).toContain('[✓]');
 	});
 
@@ -294,10 +310,10 @@ describe('Select mode — keyboard', () => {
 			})
 		);
 		await tick();
-		stdin.write('s'); await tick();
-		stdin.write(' '); await tick(); // toggle proj-exec on (cursor at 0)
-		stdin.write(' '); await tick(); // toggle proj-exec off (cursor still at 0 → [►])
-		// proj-wait (index 1, not at cursor, not checked) shows [ ]
+		// Pre-select pre-checks both; toggle exec off, move cursor away so exec shows [ ]
+		stdin.write('s');      await tick(); // enter select; pendingIds = {exec, wait}
+		stdin.write(' ');      await tick(); // toggle exec off at cursor=0
+		stdin.write('\x1B[B'); await tick(); // move cursor to 1; exec (row 0) shows [ ]
 		expect(lastFrame()!).toContain('[ ]');
 	});
 
@@ -309,9 +325,11 @@ describe('Select mode — keyboard', () => {
 			})
 		);
 		await tick();
-		stdin.write('s'); await tick(); // enter select, cursor at proj-exec
-		stdin.write(' '); await tick(); // toggle proj-exec on
-		stdin.write('\r'); await tick(); // confirm → watchedIds = {proj-exec}
+		// Pre-select pre-checks both; remove wait to keep only exec
+		stdin.write('s');      await tick(); // enter select; pendingIds = {exec, wait}
+		stdin.write('\x1B[B'); await tick(); // down → cursor=1 (wait)
+		stdin.write(' ');      await tick(); // toggle wait off → pendingIds = {exec}
+		stdin.write('\r');     await tick(); // confirm → watchedIds = {exec}
 		const frame = lastFrame()!;
 		expect(frame).toContain('proj-exec');
 		expect(frame).not.toContain('proj-wait');
@@ -346,15 +364,14 @@ describe('Select mode — keyboard', () => {
 		);
 		await tick();
 
-		// commit proj-wait: enter select, move down, toggle, confirm
-		stdin.write('s');      await tick(); // enter select, cursor=0 (proj-exec)
-		stdin.write('\x1B[B'); await tick(); // down → cursor=1 (proj-wait)
-		stdin.write(' ');      await tick(); // toggle proj-wait on
-		stdin.write('\r');     await tick(); // confirm → watchedIds = {proj-wait}
+		// commit proj-wait only: pre-select gives {exec, wait}; toggle exec off
+		stdin.write('s');      await tick(); // enter select; pendingIds = {exec, wait}; cursor=0
+		stdin.write(' ');      await tick(); // toggle exec off → pendingIds = {wait}
+		stdin.write('\r');     await tick(); // confirm → watchedIds = {wait}
 
-		// enter select again, toggle proj-exec at cursor 0, then esc
-		stdin.write('s');      await tick(); // enter select, cursor reset to 0 (proj-exec)
-		stdin.write(' ');      await tick(); // toggle proj-exec into pending
+		// enter select again (only wait visible → pendingIds={wait}), toggle exec on, then esc
+		stdin.write('s');      await tick(); // enter select; pendingIds = {wait}; cursor=0 (exec)
+		stdin.write(' ');      await tick(); // toggle exec into pending
 		stdin.write('\x1B');                 // esc — pending flush needed
 		await waitEsc();
 		await tick();
@@ -815,5 +832,195 @@ describe('Status-change highlight', () => {
 		const frame = lastFrame()!;
 		const hiLine = lineWith(frame, 'proj-hi');
 		expect(hiLine).not.toContain(ANSI_BOLD);
+	});
+});
+
+// --- UI improvements round 2 ---
+
+// Build 10 sessions for scroll tests (more than typical terminal height).
+const makeMany = (n: number): ResolvedSession[] =>
+	Array.from({ length: n }, (_, i) =>
+		makeSession({
+			status: SessionStatus.Idle,
+			displayName: `scroll-sess-${i}`,
+			sessionInfo: {
+				pid: 3000 + i,
+				sessionId: `scroll-id-${i}`,
+				cwd: `/home/user/scroll-${i}`,
+				startedAt: 1_000_000_000_000,
+				kind: 'interactive',
+				entrypoint: 'cli',
+			},
+		})
+	);
+
+describe('Vertical scroll', () => {
+	// Force a small terminal height so 20 sessions exceed the viewport.
+	beforeEach(() => {
+		vi.mocked(ink.useWindowSize).mockReturnValue({ columns: 100, rows: 12 });
+	});
+	afterEach(() => {
+		vi.mocked(ink.useWindowSize).mockReturnValue({ columns: 100, rows: 999 });
+	});
+
+	it('V1: with more sessions than terminal height, only a subset is shown', async () => {
+		// rows=12, FIXED_ROWS=6 → visibleCount=6; 20 sessions far exceeds viewport
+		const sessions = makeMany(20);
+		const { lastFrame } = render(
+			React.createElement(Dashboard, { sessions, onExit: vi.fn() })
+		);
+		await tick();
+		const frame = lastFrame()!;
+		const visibleCount = sessions.filter(s => frame.includes(s.displayName)).length;
+		expect(visibleCount).toBeLessThan(20);
+	});
+
+	it('V2: moving cursor down scrolls viewport so new rows become visible', async () => {
+		const sessions = makeMany(20);
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions, onExit: vi.fn() })
+		);
+		await tick();
+		const frameA = lastFrame()!;
+		// Move cursor far down
+		for (let i = 0; i < 15; i++) { stdin.write('j'); await tick(); }
+		const frameB = lastFrame()!;
+		expect(frameA).not.toEqual(frameB);
+		// scroll-sess-15 should now be visible
+		expect(frameB).toContain('scroll-sess-15');
+	});
+
+	it('V3: scroll indicator "↓" appears when content overflows below', async () => {
+		const sessions = makeMany(20);
+		const { lastFrame } = render(
+			React.createElement(Dashboard, { sessions, onExit: vi.fn() })
+		);
+		await tick();
+		expect(lastFrame()!).toContain('↓');
+	});
+});
+
+describe('Quick hide', () => {
+	const hideSess = makeSession({
+		status: SessionStatus.Idle,
+		displayName: 'hide-me',
+		sessionInfo: { pid: 4001, sessionId: 'hide-id-1', cwd: '/home/user/hide-me', startedAt: 1_000_000_000_000, kind: 'interactive', entrypoint: 'cli' },
+	});
+	const otherSess = makeSession({
+		status: SessionStatus.Idle,
+		displayName: 'keep-me',
+		sessionInfo: { pid: 4002, sessionId: 'hide-id-2', cwd: '/home/user/keep-me', startedAt: 1_000_000_000_000, kind: 'interactive', entrypoint: 'cli' },
+	});
+
+	it('V4: x in watch mode removes cursor session from watch view', async () => {
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions: [hideSess, otherSess], onExit: vi.fn() })
+		);
+		await tick();
+		expect(lastFrame()!).toContain('hide-me');
+		stdin.write('x'); await tick();
+		expect(lastFrame()!).not.toContain('hide-me');
+	});
+
+	it('V5: hidden session shows [~] marker in select mode', async () => {
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions: [hideSess, otherSess], onExit: vi.fn() })
+		);
+		await tick();
+		stdin.write('x'); await tick(); // hide cursor row (hide-me)
+		stdin.write('s'); await tick(); // enter select mode — cursor at 0 (hide-me, hidden)
+		stdin.write('j'); await tick(); // move cursor to row 1 — hide-me now shows [~]
+		expect(lastFrame()!).toContain('[~]');
+	});
+
+	it('V6: space on [~] session unhides and checks it', async () => {
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions: [hideSess, otherSess], onExit: vi.fn() })
+		);
+		await tick();
+		stdin.write('x'); await tick(); // hide hide-me (cursor row 0)
+		stdin.write('s'); await tick(); // enter select — cursor on hide-me (or first visible)
+		stdin.write(' '); await tick(); // toggle: unhide + check
+		const frame = lastFrame()!;
+		// [~] should be gone; hide-me should have a check
+		expect(frame).not.toContain('[~]');
+		expect(frame).toContain('[✓]');
+	});
+
+	it('V7: x key in select mode has no effect', async () => {
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions: [hideSess, otherSess], onExit: vi.fn() })
+		);
+		await tick();
+		stdin.write('s'); await tick(); // enter select
+		const frameBefore = lastFrame()!;
+		stdin.write('x'); await tick();
+		expect(lastFrame()!).toEqual(frameBefore);
+	});
+});
+
+describe('Pre-select visible sessions', () => {
+	it('V8: entering select mode pre-checks all currently visible sessions', async () => {
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions: [executingSession, waitingSession, idleSession], onExit: vi.fn() })
+		);
+		await tick();
+		stdin.write('s'); await tick(); // enter select
+		const frame = lastFrame()!;
+		// No session should be unchecked — all show [✓] or [►] (cursor), never [ ]
+		expect(frame).not.toContain('[ ]');
+	});
+});
+
+describe('Title bar', () => {
+	it('V9: "CA Dashboard" appears in all modes', async () => {
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions: [executingSession], onExit: vi.fn() })
+		);
+		await tick();
+		expect(lastFrame()!).toContain('CA Dashboard'); // watch mode
+
+		stdin.write('s'); await tick();
+		expect(lastFrame()!).toContain('CA Dashboard'); // select mode
+
+		stdin.write('\x1B'); await waitEsc();
+		expect(lastFrame()!).toContain('CA Dashboard'); // back to watch
+
+		stdin.write('t'); await tick();
+		expect(lastFrame()!).toContain('CA Dashboard'); // settings mode
+	});
+});
+
+describe('Status counts', () => {
+	it('V10: status count bar shows correct per-status counts', async () => {
+		const { lastFrame } = render(
+			React.createElement(Dashboard, {
+				sessions: [executingSession, waitingSession, idleSession],
+				onExit: vi.fn(),
+			})
+		);
+		await tick();
+		const frame = lastFrame()!;
+		expect(frame).toContain('1 executing');
+		expect(frame).toContain('1 waiting');
+		expect(frame).toContain('1 idle');
+	});
+
+	it('V11: status counts reflect ALL sessions, not just watched', async () => {
+		// deadSession is filtered from watch view but should appear in counts
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, {
+				sessions: [executingSession, deadSession],
+				onExit: vi.fn(),
+			})
+		);
+		await tick();
+		// Enter select, watch only the executing session
+		stdin.write('s'); await tick();
+		stdin.write(' '); await tick(); // toggle off exec (all pre-checked → deselect)
+		stdin.write('\r'); await tick(); // confirm — watchedIds = {} (exec deselected, dead not shown)
+		const frame = lastFrame()!;
+		// Dead session still in counts even though not in watch view
+		expect(frame).toContain('1 dead');
 	});
 });
