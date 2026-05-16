@@ -37,6 +37,22 @@ const makeSession = (overrides: Partial<ResolvedSession> = {}): ResolvedSession 
 	...overrides,
 });
 
+const makeTimedSession = (
+	displayName:  string,
+	sessionId:    string,
+	status:       SessionStatus,
+	lastActiveMs: number,
+): ResolvedSession => ({
+	sessionInfo: {
+		pid: 9000, sessionId, cwd: `/home/${displayName}`,
+		startedAt: 1_000_000_000_000, kind: 'interactive', entrypoint: 'cli',
+	},
+	status,
+	displayName,
+	resolvedAt: Date.now(),
+	lastActiveMs,
+});
+
 const executingSession = makeSession({ status: SessionStatus.Executing, displayName: 'proj-exec', sessionInfo: { pid: 1001, sessionId: 'aaaaaaaa-0000-0000-0000-000000000001', cwd: '/home/user/proj-exec', startedAt: 1_000_000_000_000, kind: 'interactive', entrypoint: 'cli' } });
 const waitingSession   = makeSession({ status: SessionStatus.Waiting,   displayName: 'proj-wait', sessionInfo: { pid: 1002, sessionId: 'aaaaaaaa-0000-0000-0000-000000000002', cwd: '/home/user/proj-wait', startedAt: 1_000_000_000_000, kind: 'interactive', entrypoint: 'cli' } });
 const idleSession      = makeSession({ status: SessionStatus.Idle,      displayName: 'proj-idle', sessionInfo: { pid: 1003, sessionId: 'aaaaaaaa-0000-0000-0000-000000000003', cwd: '/home/user/proj-idle', startedAt: 1_000_000_000_000, kind: 'interactive', entrypoint: 'cli' } });
@@ -997,22 +1013,6 @@ describe('Title bar', () => {
 		stdin.write('t'); await tick();
 		expect(lastFrame()!).toContain('CA Dashboard'); // settings mode
 	});
-});
-
-const makeTimedSession = (
-	displayName:  string,
-	sessionId:    string,
-	status:       SessionStatus,
-	lastActiveMs: number,
-): ResolvedSession => ({
-	sessionInfo: {
-		pid: 9000, sessionId, cwd: `/home/${displayName}`,
-		startedAt: 1_000_000_000_000, kind: 'interactive', entrypoint: 'cli',
-	},
-	status,
-	displayName,
-	resolvedAt: Date.now(),
-	lastActiveMs,
 });
 
 describe('Status counts', () => {
