@@ -739,25 +739,33 @@ describe('Status-change highlight', () => {
 	// Extra tick needed: useEffect (status detection) fires after render, triggering a second render.
 	const tickEffect = () => new Promise<void>(r => setTimeout(r, 0));
 
-	it('U45: highlighted sessions sorted to top of list', async () => {
+	it('U45: highlighted session does NOT move above a session with a more recent timestamp', async () => {
+		const now = Date.now();
 		const stable = makeSession({
 			status: SessionStatus.Idle,
 			displayName: 'proj-stable',
+			lastActiveMs: now - 1_000,
 			sessionInfo: { pid: 2002, sessionId: 'stable-session-id', cwd: '/home/user/proj-stable', startedAt: 1_000_000_000_000, kind: 'interactive', entrypoint: 'cli' },
 		});
+		const execWithTs = makeSession({
+			status: SessionStatus.Executing,
+			displayName: 'proj-hi',
+			lastActiveMs: now - 60_000,
+			sessionInfo: { pid: 2001, sessionId: 'highlight-session-id', cwd: '/home/user/proj-hi', startedAt: 1_000_000_000_000, kind: 'interactive', entrypoint: 'cli' },
+		});
+		const idleWithTs = { ...execWithTs, status: SessionStatus.Idle };
 		const { lastFrame, rerender } = render(
-			React.createElement(Dashboard, { sessions: [stable, execSession], onExit: vi.fn() })
+			React.createElement(Dashboard, { sessions: [stable, execWithTs], onExit: vi.fn() })
 		);
 		await tick();
-		// Transition execSession → Idle (triggers highlight via useEffect → second render)
-		rerender(React.createElement(Dashboard, { sessions: [stable, idleVersion], onExit: vi.fn() }));
+		rerender(React.createElement(Dashboard, { sessions: [stable, idleWithTs], onExit: vi.fn() }));
 		await tick();
-		await tickEffect(); // let useEffect + setHighlightedIds + second render flush
+		await tickEffect();
 		await tick();
 		const frame = lastFrame()!;
 		const projHiIdx     = frame.indexOf('proj-hi');
 		const projStableIdx = frame.indexOf('proj-stable');
-		expect(projHiIdx).toBeLessThan(projStableIdx); // highlighted appears first
+		expect(projStableIdx).toBeLessThan(projHiIdx); // stable (newer ts) stays before highlighted
 	});
 
 	it('U46: row highlighted on Executing → Idle transition', async () => {
@@ -991,6 +999,22 @@ describe('Title bar', () => {
 	});
 });
 
+const makeTimedSession = (
+	displayName:  string,
+	sessionId:    string,
+	status:       SessionStatus,
+	lastActiveMs: number,
+): ResolvedSession => ({
+	sessionInfo: {
+		pid: 9000, sessionId, cwd: `/home/${displayName}`,
+		startedAt: 1_000_000_000_000, kind: 'interactive', entrypoint: 'cli',
+	},
+	status,
+	displayName,
+	resolvedAt: Date.now(),
+	lastActiveMs,
+});
+
 describe('Status counts', () => {
 	it('V10: status count bar shows correct per-status counts', async () => {
 		const { lastFrame } = render(
@@ -1022,5 +1046,434 @@ describe('Status counts', () => {
 		const frame = lastFrame()!;
 		// Dead session still in counts even though not in watch view
 		expect(frame).toContain('1 dead');
+	});
+});
+
+// ─── Multi-sort tests ────────────────────────────────────────────────────────
+
+describe('Sort — Time', () => {
+	const now = Date.now();
+
+	it('S1: most recent first', async () => {
+		const a = makeTimedSession('alpha', 's1a', SessionStatus.Idle, now - 1_000);
+		const b = makeTimedSession('beta',  's1b', SessionStatus.Idle, now - 5_000);
+		const c = makeTimedSession('gamma', 's1c', SessionStatus.Idle, now - 60_000);
+		const { lastFrame } = render(
+			React.createElement(Dashboard, { sessions: [b, c, a], onExit: vi.fn() })
+		);
+		await tick();
+		const frame = lastFrame()!;
+		expect(frame.indexOf('alpha')).toBeLessThan(frame.indexOf('beta'));
+		expect(frame.indexOf('beta')).toBeLessThan(frame.indexOf('gamma'));
+	});
+
+	it('S2: lastActiveMs takes priority over updatedAt', async () => {
+		const a: ResolvedSession = {
+			sessionInfo: { pid: 1, sessionId: 's2a', cwd: '/a', startedAt: 0, updatedAt: now - 60_000, kind: 'interactive', entrypoint: 'cli' },
+			status: SessionStatus.Idle, displayName: 'alpha', resolvedAt: now, lastActiveMs: now - 1_000,
+		};
+		const b: ResolvedSession = {
+			sessionInfo: { pid: 2, sessionId: 's2b', cwd: '/b', startedAt: 0, updatedAt: now - 2_000, kind: 'interactive', entrypoint: 'cli' },
+			status: SessionStatus.Idle, displayName: 'beta', resolvedAt: now, lastActiveMs: undefined,
+		};
+		const { lastFrame } = render(
+			React.createElement(Dashboard, { sessions: [b, a], onExit: vi.fn() })
+		);
+		await tick();
+		const frame = lastFrame()!;
+		expect(frame.indexOf('alpha')).toBeLessThan(frame.indexOf('beta'));
+	});
+
+	it('S3: sessions with no timestamp appear last', async () => {
+		const ts = makeTimedSession('has-ts', 's3a', SessionStatus.Idle, now - 1_000);
+		const noTs: ResolvedSession = {
+			sessionInfo: { pid: 3, sessionId: 's3b', cwd: '/c', startedAt: 0, kind: 'interactive', entrypoint: 'cli' },
+			status: SessionStatus.Idle, displayName: 'no-ts', resolvedAt: now, lastActiveMs: undefined,
+		};
+		const { lastFrame } = render(
+			React.createElement(Dashboard, { sessions: [noTs, ts], onExit: vi.fn() })
+		);
+		await tick();
+		const frame = lastFrame()!;
+		expect(frame.indexOf('has-ts')).toBeLessThan(frame.indexOf('no-ts'));
+	});
+
+	it('S4: Time sort is default on mount', async () => {
+		const a = makeTimedSession('newest', 's4a', SessionStatus.Idle, now - 500);
+		const b = makeTimedSession('middle', 's4b', SessionStatus.Idle, now - 5_000);
+		const c = makeTimedSession('oldest', 's4c', SessionStatus.Idle, now - 60_000);
+		const { lastFrame } = render(
+			React.createElement(Dashboard, { sessions: [b, c, a], onExit: vi.fn() })
+		);
+		await tick();
+		const frame = lastFrame()!;
+		expect(frame.indexOf('newest')).toBeLessThan(frame.indexOf('middle'));
+		expect(frame.indexOf('middle')).toBeLessThan(frame.indexOf('oldest'));
+	});
+});
+
+describe('Sort — Status', () => {
+	it('S5: correct group order Executing → Waiting → Idle → Hanging → Dead', async () => {
+		const now = Date.now();
+		const s = (name: string, id: string, status: SessionStatus) =>
+			makeTimedSession(name, id, status, now);
+		const sessions = [
+			s('dead-one',      's5d', SessionStatus.Dead),
+			s('idle-one',      's5i', SessionStatus.Idle),
+			s('hanging-one',   's5h', SessionStatus.Hanging),
+			s('executing-one', 's5e', SessionStatus.Executing),
+			s('waiting-one',   's5w', SessionStatus.Waiting),
+		];
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions, onExit: vi.fn() })
+		);
+		await tick();
+		stdin.write('t'); await tick();
+		stdin.write('j'); await tick(); // cursor → row 1 (sort)
+		stdin.write('l'); await tick(); // cycle to Status
+		stdin.write('\x1B'); await waitEsc();
+		const frame = lastFrame()!;
+		const idxExec    = frame.indexOf('executing-one');
+		const idxWait    = frame.indexOf('waiting-one');
+		const idxIdle    = frame.indexOf('idle-one');
+		const idxHang    = frame.indexOf('hanging-one');
+		// Dead is filtered from watch view; just check the visible ones
+		expect(idxExec).toBeLessThan(idxWait);
+		expect(idxWait).toBeLessThan(idxIdle);
+		expect(idxIdle).toBeLessThan(idxHang);
+	});
+
+	it('S6: stable within same status', async () => {
+		const now = Date.now();
+		const a = makeTimedSession('alpha-idle', 's6a', SessionStatus.Idle, now);
+		const b = makeTimedSession('beta-idle',  's6b', SessionStatus.Idle, now);
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions: [a, b], onExit: vi.fn() })
+		);
+		await tick();
+		stdin.write('t'); await tick();
+		stdin.write('j'); await tick();
+		stdin.write('l'); await tick(); // Status sort
+		stdin.write('\x1B'); await waitEsc();
+		const frame = lastFrame()!;
+		expect(frame.indexOf('alpha-idle')).toBeLessThan(frame.indexOf('beta-idle'));
+	});
+});
+
+describe('Sort — Name', () => {
+	it('S7: alphabetical ascending', async () => {
+		const now = Date.now();
+		const sessions = [
+			makeTimedSession('zebra',  's7z', SessionStatus.Idle, now),
+			makeTimedSession('apple',  's7a', SessionStatus.Idle, now),
+			makeTimedSession('Mango',  's7m', SessionStatus.Idle, now),
+		];
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions, onExit: vi.fn() })
+		);
+		await tick();
+		stdin.write('t'); await tick();
+		stdin.write('j'); await tick();
+		stdin.write('l'); await tick(); // Status
+		stdin.write('l'); await tick(); // Name
+		stdin.write('\x1B'); await waitEsc();
+		const frame = lastFrame()!;
+		expect(frame.indexOf('apple')).toBeLessThan(frame.indexOf('Mango'));
+		expect(frame.indexOf('Mango')).toBeLessThan(frame.indexOf('zebra'));
+	});
+
+	it('S8: case-insensitive name sort', async () => {
+		const now = Date.now();
+		const sessions = [
+			makeTimedSession('Beta',  's8b', SessionStatus.Idle, now),
+			makeTimedSession('alpha', 's8a', SessionStatus.Idle, now),
+			makeTimedSession('GAMMA', 's8g', SessionStatus.Idle, now),
+		];
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions, onExit: vi.fn() })
+		);
+		await tick();
+		stdin.write('t'); await tick();
+		stdin.write('j'); await tick();
+		stdin.write('l'); await tick(); // Status
+		stdin.write('l'); await tick(); // Name
+		stdin.write('\x1B'); await waitEsc();
+		const frame = lastFrame()!;
+		expect(frame.indexOf('alpha')).toBeLessThan(frame.indexOf('Beta'));
+		expect(frame.indexOf('Beta')).toBeLessThan(frame.indexOf('GAMMA'));
+	});
+});
+
+describe('Sort auto-update on data change', () => {
+	it('S9: Status sort updates when session transitions', async () => {
+		const now = Date.now();
+		const a = makeTimedSession('alpha-idle',   's9a', SessionStatus.Idle,      now);
+		const b = makeTimedSession('beta-exec',    's9b', SessionStatus.Executing, now);
+		const bDead = { ...b, status: SessionStatus.Dead };
+		const { lastFrame, stdin, rerender } = render(
+			React.createElement(Dashboard, { sessions: [a, b], onExit: vi.fn() })
+		);
+		await tick();
+		stdin.write('t'); await tick();
+		stdin.write('j'); await tick();
+		stdin.write('l'); await tick(); // Status sort
+		stdin.write('\x1B'); await waitEsc();
+		rerender(React.createElement(Dashboard, { sessions: [a, bDead], onExit: vi.fn() }));
+		await tick();
+		const frame = lastFrame()!;
+		// alpha-idle is Idle (rank 2), beta-exec is now Dead (filtered from watch view)
+		// alpha should be visible before Dead (which is hidden)
+		expect(frame.indexOf('alpha-idle')).toBeGreaterThanOrEqual(0);
+		expect(frame).not.toContain('beta-exec'); // Dead filtered from watch
+	});
+
+	it('S10: Time sort updates when lastActiveMs changes', async () => {
+		const now = Date.now();
+		const a = makeTimedSession('alpha', 's10a', SessionStatus.Idle, now - 1_000);
+		const b = makeTimedSession('beta',  's10b', SessionStatus.Idle, now - 5_000);
+		const aUpdated = { ...a, lastActiveMs: now - 10_000 };
+		const bUpdated = { ...b, lastActiveMs: now - 500 };
+		const { lastFrame, rerender } = render(
+			React.createElement(Dashboard, { sessions: [a, b], onExit: vi.fn() })
+		);
+		await tick();
+		const frame1 = lastFrame()!;
+		expect(frame1.indexOf('alpha')).toBeLessThan(frame1.indexOf('beta'));
+		rerender(React.createElement(Dashboard, { sessions: [aUpdated, bUpdated], onExit: vi.fn() }));
+		await tick();
+		const frame2 = lastFrame()!;
+		expect(frame2.indexOf('beta')).toBeLessThan(frame2.indexOf('alpha'));
+	});
+});
+
+describe('Settings navigation — sort method', () => {
+	const tickEffect = () => new Promise<void>(r => setTimeout(r, 0));
+
+	it('S11: settings shows Sort method row', async () => {
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions: [executingSession], onExit: vi.fn() })
+		);
+		await tick();
+		stdin.write('t'); await tick();
+		expect(lastFrame()!).toContain('Sort method');
+	});
+
+	it('S12: default sort label shown as Time', async () => {
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions: [executingSession], onExit: vi.fn() })
+		);
+		await tick();
+		stdin.write('t'); await tick();
+		expect(lastFrame()!).toContain('Time');
+	});
+
+	it('S13: ↓ moves cursor to sort row', async () => {
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions: [executingSession], onExit: vi.fn() })
+		);
+		await tick();
+		stdin.write('t'); await tick();
+		stdin.write('j'); await tick();
+		const frame = lastFrame()!;
+		const sortIdx     = frame.indexOf('Sort method');
+		const arrowOnSort = frame.lastIndexOf('►', sortIdx);
+		// ► should appear just before "Sort method" text on the same line
+		expect(arrowOnSort).toBeGreaterThanOrEqual(0);
+		expect(sortIdx - arrowOnSort).toBeLessThan(5);
+	});
+
+	it('S14: ↑ moves cursor back to interval row', async () => {
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions: [executingSession], onExit: vi.fn() })
+		);
+		await tick();
+		stdin.write('t'); await tick();
+		stdin.write('j'); await tick();
+		stdin.write('k'); await tick();
+		const frame = lastFrame()!;
+		const pollIdx     = frame.indexOf('Poll interval');
+		const arrowOnPoll = frame.lastIndexOf('►', pollIdx);
+		expect(arrowOnPoll).toBeGreaterThanOrEqual(0);
+		expect(pollIdx - arrowOnPoll).toBeLessThan(5);
+	});
+
+	it('S15: → cycles Time→Status', async () => {
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions: [executingSession], onExit: vi.fn() })
+		);
+		await tick();
+		stdin.write('t'); await tick();
+		stdin.write('j'); await tick(); // cursor → sort row
+		stdin.write('l'); await tick(); // →
+		expect(lastFrame()!).toContain('Status');
+	});
+
+	it('S16: → cycles Status→Name', async () => {
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions: [executingSession], onExit: vi.fn() })
+		);
+		await tick();
+		stdin.write('t'); await tick();
+		stdin.write('j'); await tick();
+		stdin.write('l'); await tick();
+		stdin.write('l'); await tick();
+		expect(lastFrame()!).toContain('Name');
+	});
+
+	it('S17: → wraps Name→Time', async () => {
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions: [executingSession], onExit: vi.fn() })
+		);
+		await tick();
+		stdin.write('t'); await tick();
+		stdin.write('j'); await tick();
+		stdin.write('l'); await tick();
+		stdin.write('l'); await tick();
+		stdin.write('l'); await tick();
+		expect(lastFrame()!).toContain('Time');
+	});
+
+	it('S18: ← cycles Time→Name (backward wrap)', async () => {
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions: [executingSession], onExit: vi.fn() })
+		);
+		await tick();
+		stdin.write('t'); await tick();
+		stdin.write('j'); await tick();
+		stdin.write('h'); await tick(); // ←
+		expect(lastFrame()!).toContain('Name');
+	});
+
+	it('S19: sort takes effect in watch mode after esc', async () => {
+		const now = Date.now();
+		const sessions = [
+			makeTimedSession('cherry', 's19c', SessionStatus.Idle, now),
+			makeTimedSession('apple',  's19a', SessionStatus.Idle, now),
+			makeTimedSession('banana', 's19b', SessionStatus.Idle, now),
+		];
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions, onExit: vi.fn() })
+		);
+		await tick();
+		stdin.write('t'); await tick();
+		stdin.write('j'); await tick();
+		stdin.write('l'); await tick(); // Status
+		stdin.write('l'); await tick(); // Name
+		stdin.write('\x1B'); await waitEsc();
+		const frame = lastFrame()!;
+		expect(frame.indexOf('apple')).toBeLessThan(frame.indexOf('banana'));
+		expect(frame.indexOf('banana')).toBeLessThan(frame.indexOf('cherry'));
+	});
+
+	it('S20: → on sort row does not affect interval', async () => {
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions: [executingSession], onExit: vi.fn() })
+		);
+		await tick();
+		stdin.write('t'); await tick();
+		const frameBefore = lastFrame()!;
+		const intervalMatch = frameBefore.match(/Poll interval:.*?\[◄\]\s*(\S+)\s*\[►\]/);
+		const intervalLabel = intervalMatch?.[1];
+		stdin.write('j'); await tick(); // cursor → sort row
+		stdin.write('l'); await tick(); // → on sort row
+		const frameAfter = lastFrame()!;
+		const intervalMatchAfter = frameAfter.match(/Poll interval:.*?\[◄\]\s*(\S+)\s*\[►\]/);
+		expect(intervalMatchAfter?.[1]).toBe(intervalLabel);
+	});
+
+	it('S21: ←/→ on interval row still work', async () => {
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions: [executingSession], onExit: vi.fn() })
+		);
+		await tick();
+		stdin.write('t'); await tick();
+		// cursor starts at row 0 (interval)
+		stdin.write('l'); await tick(); // → increments interval
+		const frame = lastFrame()!;
+		// Default is 1s (index 1), after → should be 2s (index 2)
+		expect(frame).toContain('2s');
+	});
+
+	it('S22: ↑ clamps at row 0', async () => {
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions: [executingSession], onExit: vi.fn() })
+		);
+		await tick();
+		stdin.write('t'); await tick();
+		for (let i = 0; i < 5; i++) { stdin.write('k'); await tick(); }
+		const frame = lastFrame()!;
+		const pollIdx     = frame.indexOf('Poll interval');
+		const arrowOnPoll = frame.lastIndexOf('►', pollIdx);
+		expect(arrowOnPoll).toBeGreaterThanOrEqual(0);
+		expect(pollIdx - arrowOnPoll).toBeLessThan(5);
+	});
+
+	it('S23: ↓ clamps at row 1', async () => {
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions: [executingSession], onExit: vi.fn() })
+		);
+		await tick();
+		stdin.write('t'); await tick();
+		for (let i = 0; i < 5; i++) { stdin.write('j'); await tick(); }
+		const frame = lastFrame()!;
+		const sortIdx     = frame.indexOf('Sort method');
+		const arrowOnSort = frame.lastIndexOf('►', sortIdx);
+		expect(arrowOnSort).toBeGreaterThanOrEqual(0);
+		expect(sortIdx - arrowOnSort).toBeLessThan(5);
+	});
+});
+
+describe('Highlight color-only', () => {
+	const tickEffect = () => new Promise<void>(r => setTimeout(r, 0));
+
+	it('S24: highlighted session is still bold+yellow', async () => {
+		const now = Date.now();
+		const execS = makeTimedSession('exec-hi', 's24e', SessionStatus.Executing, now - 1_000);
+		const idleS = { ...execS, status: SessionStatus.Idle };
+		const { lastFrame, rerender } = render(
+			React.createElement(Dashboard, { sessions: [execS], onExit: vi.fn() })
+		);
+		await tick();
+		rerender(React.createElement(Dashboard, { sessions: [idleS], onExit: vi.fn() }));
+		await tick(); await tickEffect(); await tick();
+		const frame = lastFrame()!;
+		expect(frame).toContain('\x1b[33m'); // yellow
+		expect(frame).toContain('\x1b[1m');  // bold
+	});
+
+	it('S25: highlighted session does not move above a newer session', async () => {
+		const now = Date.now();
+		const stable = makeTimedSession('stable-new',  's25s', SessionStatus.Idle,      now - 1_000);
+		const execS  = makeTimedSession('exec-old',    's25e', SessionStatus.Executing,  now - 60_000);
+		const idleS  = { ...execS, status: SessionStatus.Idle };
+		const { lastFrame, rerender } = render(
+			React.createElement(Dashboard, { sessions: [stable, execS], onExit: vi.fn() })
+		);
+		await tick();
+		rerender(React.createElement(Dashboard, { sessions: [stable, idleS], onExit: vi.fn() }));
+		await tick(); await tickEffect(); await tick();
+		const frame = lastFrame()!;
+		expect(frame.indexOf('stable-new')).toBeLessThan(frame.indexOf('exec-old'));
+	});
+
+	it('S26: highlighted Idle stays behind Executing in Status sort', async () => {
+		const now = Date.now();
+		const execS = makeTimedSession('exec-session', 's26e', SessionStatus.Executing, now);
+		const idleExecS = makeTimedSession('idle-hilight', 's26i', SessionStatus.Executing, now);
+		const idleVersion = { ...idleExecS, status: SessionStatus.Idle };
+		const { lastFrame, stdin, rerender } = render(
+			React.createElement(Dashboard, { sessions: [execS, idleExecS], onExit: vi.fn() })
+		);
+		await tick();
+		// Switch to Status sort
+		stdin.write('t'); await tick();
+		stdin.write('j'); await tick();
+		stdin.write('l'); await tick();
+		stdin.write('\x1B'); await waitEsc();
+		// Trigger highlight on idle-hilight
+		rerender(React.createElement(Dashboard, { sessions: [execS, idleVersion], onExit: vi.fn() }));
+		await tick(); await tickEffect(); await tick();
+		const frame = lastFrame()!;
+		expect(frame.indexOf('exec-session')).toBeLessThan(frame.indexOf('idle-hilight'));
 	});
 });
