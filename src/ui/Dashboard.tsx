@@ -78,7 +78,10 @@ export function Dashboard({ sessions, onExit, onIntervalChange }: DashboardProps
 				if (id) setHighlightedIds(prev => { const next = new Set(prev); next.delete(id); return next; });
 			} else if (input === 'x') {
 				const id = watchSessions[clampedWatchCursor]?.sessionInfo.sessionId;
-				if (id) setHiddenIds(prev => { const next = new Set(prev); next.add(id); return next; });
+				if (id) {
+					setHiddenIds(prev => { const next = new Set(prev); next.add(id); return next; });
+					setWatchCursor(c => Math.min(c, Math.max(0, watchSessions.length - 2)));
+				}
 			} else if (input === 's') {
 				setPendingIds(new Set(watchSessions.map(s => s.sessionInfo.sessionId)));
 				setCursor(0);
