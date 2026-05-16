@@ -5,6 +5,7 @@ import type { ResolvedSession } from '../types.js';
 import { WatchView } from './WatchView.js';
 import { SelectView } from './SelectView.js';
 import { SettingsView } from './SettingsView.js';
+import type { DashboardConfig } from '../persistence/configStore.js';
 
 const PRESETS_MS    = [500, 1_000, 2_000, 5_000, 10_000, 30_000] as const;
 const PRESET_LABELS = ['0.5s', '1s', '2s', '5s', '10s', '30s'] as const;
@@ -35,21 +36,29 @@ interface DashboardProps {
 	sessions:          ResolvedSession[];
 	onExit:            () => void;
 	onIntervalChange?: (ms: number) => void;
+	initialConfig?:    DashboardConfig;
+	onConfigChange?:   (config: DashboardConfig) => void;
 }
 
-export function Dashboard({ sessions, onExit, onIntervalChange }: DashboardProps): React.ReactElement {
+export function Dashboard({ sessions, onExit, onIntervalChange, initialConfig, onConfigChange }: DashboardProps): React.ReactElement {
 	const [mode, setMode]               = useState<'watch' | 'select' | 'rename' | 'settings'>('watch');
-	const [watchedIds, setWatchedIds]   = useState<Set<string>>(new Set());
+	const [watchedIds, setWatchedIds]   = useState<Set<string>>(new Set(initialConfig?.watchedIds ?? []));
 	const [pendingIds, setPendingIds]   = useState<Set<string>>(new Set());
 	const [cursor, setCursor]           = useState<number>(0);
 	const [watchCursor, setWatchCursor] = useState<number>(0);
-	const [customNames, setCustomNames] = useState<Map<string, string>>(new Map());
+	const [customNames, setCustomNames] = useState<Map<string, string>>(new Map(Object.entries(initialConfig?.customNames ?? {})));
 	const [renameBuffer, setRenameBuffer] = useState<string>('');
-	const [intervalIdx, setIntervalIdx] = useState<number>(1);
+	const [intervalIdx, setIntervalIdx] = useState<number>(() => {
+		const idx = PRESETS_MS.indexOf((initialConfig?.intervalMs ?? 1000) as typeof PRESETS_MS[number]);
+		return idx >= 0 ? idx : 1;
+	});
 	const prevStatusesRef = useRef<Map<string, SessionStatus>>(new Map());
 	const [highlightedIds, setHighlightedIds] = useState<Set<string>>(new Set());
-	const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
-	const [sortMethod, setSortMethod]         = useState<SortMethod>(SortMethod.Time);
+	const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set(initialConfig?.hiddenIds ?? []));
+	const [sortMethod, setSortMethod]         = useState<SortMethod>(() => {
+		const m = initialConfig?.sortMethod;
+		return (SORT_METHODS as string[]).includes(m ?? '') ? m as SortMethod : SortMethod.Time;
+	});
 	const [settingsCursor, setSettingsCursor] = useState<number>(0);
 
 	// Detect status transitions and update highlightedIds.
@@ -70,6 +79,17 @@ export function Dashboard({ sessions, onExit, onIntervalChange }: DashboardProps
 		for (const s of sessions) prev.set(s.sessionInfo.sessionId, s.status);
 		setHighlightedIds(next);
 	}, [sessions]); // eslint-disable-line react-hooks/exhaustive-deps
+
+	// Persist user preferences on every change.
+	useEffect(() => {
+		onConfigChange?.({
+			watchedIds:  [...watchedIds],
+			hiddenIds:   [...hiddenIds],
+			customNames: Object.fromEntries(customNames),
+			intervalMs:  PRESETS_MS[intervalIdx],
+			sortMethod,
+		});
+	}, [watchedIds, hiddenIds, customNames, intervalIdx, sortMethod]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const sortedSessions = [...sessions].sort((a, b) => {
 		if (sortMethod === SortMethod.Time) {
