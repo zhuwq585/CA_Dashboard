@@ -4,6 +4,8 @@
 
 Sessions awaiting tool approval render as **Idle** instead of **Waiting**. During an approval prompt, Claude Code stops updating `~/.claude/sessions/<pid>.json`, so the resolver's `status !== "busy"` branch fires before the child-process check that would otherwise produce **Waiting**.
 
+**Follow-up (Issue #14):** when a user _rejects_ a tool-approval prompt with no correction, Claude Code writes a `user` `tool_result` entry and halts. The classifier saw this as `userTurn` → resolver mapped it to **Executing** indefinitely. The `userRejectedTool` conversation state (below) fixes this so a rejected session settles to **Idle** and the dashboard highlights it.
+
 ## Solution Summary
 
 Read the JSONL conversation log at `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`. The last entry reveals the conversation state, which (combined with the existing PID liveness and child-process checks) gives an unambiguous status.
@@ -34,6 +36,7 @@ export type ConversationState =
 	| { kind: 'pendingToolApproval' }
 	| { kind: 'assistantDone' }
 	| { kind: 'userTurn' }
+	| { kind: 'userRejectedTool' }
 	| { kind: 'unknown' };
 ```
 
@@ -83,8 +86,17 @@ Replaces every `/` in `cwd` with `-`. No hashing.
    | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
    | `type === 'assistant'` AND `message.stop_reason === 'tool_use'` AND `message.content` includes a block with `type === 'tool_use'`; AND no later entry has `type === 'user'` | `pendingToolApproval` |
    | `type === 'assistant'` AND `message.stop_reason !== 'tool_use'` (or no `tool_use` content block)                                                                            | `assistantDone`       |
+   | `type === 'user'` AND top-level `toolUseResult === 'User rejected tool use'`                                                                                                | `userRejectedTool`    |
    | `type === 'user'` AND no later entry has `type === 'assistant'`                                                                                                             | `userTurn`            |
    | otherwise                                                                                                                                                                   | `unknown`             |
+
+   The `userRejectedTool` row takes precedence over the generic `userTurn` row. When a
+   user **rejects** a tool-approval prompt, Claude Code writes a `user` entry whose
+   content is a `tool_result` block and whose top-level `toolUseResult` field is the
+   string `'User rejected tool use'`. This is a pure rejection with no correction — the
+   conversation halts and no follow-up API call is made, so the session is idle. (A
+   rejection _with_ a correction message produces a different `toolUseResult` value and
+   still classifies as `userTurn`, since Claude Code does call the API in that case.)
 
 6. Return `{ state, mtimeMs: stat.mtimeMs }`.
 
@@ -124,15 +136,16 @@ export interface StatusResolverOptions {
 
 4. state.kind === 'pendingToolApproval'
    4a. real children exist (filtered against helperProcesses) →  Executing
-   4b. otherwise                                              →  Idle
-       (session.status='waiting' was already caught by step 3b; reaching
-        4b means the approval was resolved — silent rejection path)
+   4b. otherwise                                              →  Waiting
 
 5. state.kind === 'userTurn'                                  →  Executing
 
-6. state.kind === 'assistantDone'                             →  Idle
+6. state.kind === 'userRejectedTool'                          →  Idle
+   (user rejected a tool with no correction; conversation halted)
 
-7. state.kind === 'unknown'                                   →  Idle
+7. state.kind === 'assistantDone'                             →  Idle
+
+8. state.kind === 'unknown'                                   →  Idle
 ```
 
 The `session.status === 'busy'` check is removed. `displayName` resolution and `resolvedAt = Date.now()` are unchanged.
@@ -157,6 +170,7 @@ Integration-style: real temp directories, real files. No fs mocking. `os.tmpdir(
 | C8  | Trailing partial JSON (mid-write race)                                     | Skips partial line; classifies prior valid line |
 | C9  | Assistant `tool_use` followed by another assistant entry (no `user` since) | `state.kind === 'pendingToolApproval'`          |
 | C10 | `mtimeMs` returned matches `fs.stat` mtime                                 | `mtimeMs` defined and within ±5ms of stat       |
+| C11 | Last line: `user` entry with `toolUseResult === 'User rejected tool use'`  | `state.kind === 'userRejectedTool'`             |
 
 ### statusResolver.test.ts additions
 
@@ -172,7 +186,7 @@ Existing `tinyexec` mocking pattern (`vi.mock('tinyexec')`) for `ps`/`pgrep` sta
 
 | ID    | Description                                                                     | Setup                                                                                      | Expected    |
 | ----- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------- |
-| R-J1  | Silent rejection — pendingToolApproval, no real children, status not 'waiting'  | state = `pendingToolApproval`, children = `['caffeinate']`                                 | `Idle`      |
+| R-J1  | Approval pending, no real children                                              | state = `pendingToolApproval`, children = `['caffeinate']`                                 | `Waiting`   |
 | R-J2  | Tool actively running                                                           | state = `pendingToolApproval`, children = `['bash']`                                       | `Executing` |
 | R-J3  | Conversation done — assistant finished, no pending action                       | state = `assistantDone`                                                                    | `Idle`      |
 | R-J4  | Model generating response                                                       | state = `userTurn`                                                                         | `Executing` |
@@ -181,7 +195,8 @@ Existing `tinyexec` mocking pattern (`vi.mock('tinyexec')`) for `ps`/`pgrep` sta
 | R-J7  | Dead PID overrides JSONL                                                        | `isPidAlive` false, state = `pendingToolApproval`                                          | `Dead`      |
 | R-J8  | Hanging when BOTH `updatedAt` and JSONL mtime are stale                         | state = `assistantDone`, both `now - 121_000`                                              | `Hanging`   |
 | R-J9  | NOT Hanging — long-running tool (fresh `updatedAt`, stale mtime, real children) | state = `pendingToolApproval`, mtime stale, `updatedAt = now`, child `bash`                | `Executing` |
-| R-J10 | NOT Hanging — silent rejection (stale `updatedAt`, fresh mtime, no children)    | state = `pendingToolApproval`, mtime fresh, `updatedAt = now - 121_000`, only `caffeinate` | `Idle`      |
+| R-J10 | NOT Hanging — approval prompt (stale `updatedAt`, fresh mtime)                  | state = `pendingToolApproval`, mtime fresh, `updatedAt = now - 121_000`, only `caffeinate` | `Waiting`   |
+| R-J14 | Tool rejected with no correction — conversation halted                          | state = `userRejectedTool`                                                                 | `Idle`      |
 
 ### Existing resolver tests
 
