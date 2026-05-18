@@ -2,11 +2,11 @@ import { SessionStatus } from '../types.js';
 
 export function formatStatus(status: SessionStatus): string {
 	switch (status) {
-		case SessionStatus.Executing: return '⚙ Executing';
-		case SessionStatus.Waiting:   return '⏳ Waiting';
-		case SessionStatus.Idle:      return '✓ Idle';
-		case SessionStatus.Hanging:   return '⚠ Hanging';
-		case SessionStatus.Dead:      return '✗ Dead';
+	case SessionStatus.Executing: return '⚙ Executing';
+	case SessionStatus.Waiting:   return '⏳ Waiting';
+	case SessionStatus.Idle:      return '✓ Idle';
+	case SessionStatus.Hanging:   return '⚠ Hanging';
+	case SessionStatus.Dead:      return '✗ Dead';
 	}
 }
 
