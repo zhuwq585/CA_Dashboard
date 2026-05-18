@@ -202,10 +202,10 @@ describe('StatusResolver.resolve', () => {
 		expect(result.status).toBe(SessionStatus.Executing);
 	});
 
-	it('R-J14: Idle — userRejectedTool (tool rejected, conversation halted)', async () => {
+	it('R-J14: Idle — userInterrupted (tool rejected / model interrupted, halted)', async () => {
 		mockPsAndPgrep(1234, true, []);
 		const resolver = new StatusResolver({
-			logReader: stubReader({ kind: 'userRejectedTool' }, NOW),
+			logReader: stubReader({ kind: 'userInterrupted' }, NOW),
 		});
 		const session = { ...baseSession, updatedAt: NOW };
 		const [result] = await resolver.resolve([session]);

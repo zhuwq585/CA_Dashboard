@@ -57,11 +57,10 @@ const userMessage = {
 	},
 };
 
-// A pure tool rejection: the user denied the approval prompt with no correction.
-// Claude Code writes a tool_result entry with toolUseResult='User rejected tool use'.
-const userRejectedTool = {
+// The tool_result entry Claude Code writes when a tool approval is rejected.
+const userRejectionResult = {
 	type: 'user',
-	uuid: 'user-reject',
+	uuid: 'user-reject-result',
 	timestamp: '2026-05-08T03:18:30.000Z',
 	message: {
 		role: 'user',
@@ -77,12 +76,26 @@ const userRejectedTool = {
 	toolUseResult: 'User rejected tool use',
 };
 
-// A rejection with a correction message: Claude Code still calls the API, so this
-// is a genuine userTurn. Its toolUseResult is a longer 'Error: ...' string.
-const userRejectedWithCorrection = {
-	...userRejectedTool,
-	uuid: 'user-reject-correction',
-	toolUseResult: "Error: The user doesn't want to proceed with this tool use.",
+// The trailing user text entry Claude Code appends after a tool rejection.
+const toolUseInterrupt = {
+	type: 'user',
+	uuid: 'user-interrupt-tool',
+	timestamp: '2026-05-08T03:18:31.000Z',
+	message: {
+		role: 'user',
+		content: [{ type: 'text', text: '[Request interrupted by user for tool use]' }],
+	},
+};
+
+// The trailing user text entry written when the model itself is interrupted.
+const modelInterrupt = {
+	type: 'user',
+	uuid: 'user-interrupt-model',
+	timestamp: '2026-05-08T03:18:32.000Z',
+	message: {
+		role: 'user',
+		content: '[Request interrupted by user]',
+	},
 };
 
 beforeEach(async () => {
@@ -217,22 +230,29 @@ describe('ConversationLogReader.readState', () => {
 		expect(result.state.kind).toBe('unknown');
 	});
 
-	it('C17: userRejectedTool when last user entry is a pure tool rejection', async () => {
-		await writeJsonl([userMessage, assistantToolUse, userRejectedTool]);
+	it('C17: userInterrupted when last entry is the tool-use interrupt marker', async () => {
+		// A rejected tool writes the tool_result entry AND a trailing interrupt marker.
+		await writeJsonl([userMessage, assistantToolUse, userRejectionResult, toolUseInterrupt]);
 		const result = await reader.readState(CWD, SESSION_ID);
-		expect(result.state.kind).toBe('userRejectedTool');
+		expect(result.state.kind).toBe('userInterrupted');
 	});
 
-	it('C18: userTurn when rejection includes a correction (API call follows)', async () => {
-		await writeJsonl([userMessage, assistantToolUse, userRejectedWithCorrection]);
+	it('C18: userInterrupted when last entry is the model interrupt marker', async () => {
+		await writeJsonl([userMessage, assistantToolUse, modelInterrupt]);
+		const result = await reader.readState(CWD, SESSION_ID);
+		expect(result.state.kind).toBe('userInterrupted');
+	});
+
+	it('C19: userTurn when a real user message follows the interrupt marker', async () => {
+		await writeJsonl([assistantToolUse, toolUseInterrupt, userMessage]);
 		const result = await reader.readState(CWD, SESSION_ID);
 		expect(result.state.kind).toBe('userTurn');
 	});
 
-	it('C19: userRejectedTool survives trailing synthetic entries', async () => {
-		await writeJsonl([assistantToolUse, userRejectedTool, attachment]);
+	it('C22: userInterrupted survives trailing synthetic entries', async () => {
+		await writeJsonl([assistantToolUse, userRejectionResult, toolUseInterrupt, attachment]);
 		const result = await reader.readState(CWD, SESSION_ID);
-		expect(result.state.kind).toBe('userRejectedTool');
+		expect(result.state.kind).toBe('userInterrupted');
 	});
 
 	it('C12: classifies correctly when file exceeds tailBytes', async () => {

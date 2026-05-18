@@ -94,7 +94,6 @@ Replaces every `/` in `cwd` with `-`. No hashing.
    user **rejects** a tool-approval prompt — or interrupts the model mid-generation —
    Claude Code appends a `user` entry whose text content is exactly one of these
    interrupt markers:
-
    - `[Request interrupted by user for tool use]` — a tool approval was rejected
    - `[Request interrupted by user]` — the model was interrupted
 
@@ -164,22 +163,22 @@ The `session.status === 'busy'` check is removed. `displayName` resolution and `
 
 Integration-style: real temp directories, real files. No fs mocking. `os.tmpdir()` + `fs/promises`.
 
-| ID  | Description                                                                | Expected                                        |
-| --- | -------------------------------------------------------------------------- | ----------------------------------------------- |
-| C1  | `encodeProjectPath('/Users/x/y')`                                          | `'-Users-x-y'`                                  |
-| C2  | `encodeProjectPath('/')`                                                   | `'-'`                                           |
-| C3  | Last line: assistant `tool_use` with `tool_use` content block              | `state.kind === 'pendingToolApproval'`          |
-| C4  | Last line: assistant `end_turn`                                            | `state.kind === 'assistantDone'`                |
-| C5  | Last line: user message                                                    | `state.kind === 'userTurn'`                     |
-| C6  | JSONL file does not exist                                                  | `state.kind === 'unknown'`                      |
-| C7  | JSONL file empty                                                           | `state.kind === 'unknown'`                      |
-| C8  | Trailing partial JSON (mid-write race)                                     | Skips partial line; classifies prior valid line |
-| C9  | Assistant `tool_use` followed by another assistant entry (no `user` since) | `state.kind === 'pendingToolApproval'`          |
-| C10 | `mtimeMs` returned matches `fs.stat` mtime                                 | `mtimeMs` defined and within ±5ms of stat       |
-| C17 | Last line: `user` entry, text content `[Request interrupted by user for tool use]` | `state.kind === 'userInterrupted'`       |
-| C18 | Last line: `user` entry, text content `[Request interrupted by user]`      | `state.kind === 'userInterrupted'`              |
-| C19 | Interrupt marker followed by a real `user` message                        | `state.kind === 'userTurn'`                     |
-| C22 | Interrupt marker followed only by synthetic entries                        | `state.kind === 'userInterrupted'`              |
+| ID  | Description                                                                        | Expected                                        |
+| --- | ---------------------------------------------------------------------------------- | ----------------------------------------------- |
+| C1  | `encodeProjectPath('/Users/x/y')`                                                  | `'-Users-x-y'`                                  |
+| C2  | `encodeProjectPath('/')`                                                           | `'-'`                                           |
+| C3  | Last line: assistant `tool_use` with `tool_use` content block                      | `state.kind === 'pendingToolApproval'`          |
+| C4  | Last line: assistant `end_turn`                                                    | `state.kind === 'assistantDone'`                |
+| C5  | Last line: user message                                                            | `state.kind === 'userTurn'`                     |
+| C6  | JSONL file does not exist                                                          | `state.kind === 'unknown'`                      |
+| C7  | JSONL file empty                                                                   | `state.kind === 'unknown'`                      |
+| C8  | Trailing partial JSON (mid-write race)                                             | Skips partial line; classifies prior valid line |
+| C9  | Assistant `tool_use` followed by another assistant entry (no `user` since)         | `state.kind === 'pendingToolApproval'`          |
+| C10 | `mtimeMs` returned matches `fs.stat` mtime                                         | `mtimeMs` defined and within ±5ms of stat       |
+| C17 | Last line: `user` entry, text content `[Request interrupted by user for tool use]` | `state.kind === 'userInterrupted'`              |
+| C18 | Last line: `user` entry, text content `[Request interrupted by user]`              | `state.kind === 'userInterrupted'`              |
+| C19 | Interrupt marker followed by a real `user` message                                 | `state.kind === 'userTurn'`                     |
+| C22 | Interrupt marker followed only by synthetic entries                                | `state.kind === 'userInterrupted'`              |
 
 ### statusResolver.test.ts additions
 

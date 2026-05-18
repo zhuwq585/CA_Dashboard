@@ -26,16 +26,18 @@ interface ParsedEntry {
 	type?: string;
 	message?: {
 		role?: string;
-		content?: Array<{ type?: string }>;
+		content?: string | Array<{ type?: string; text?: string }>;
 		stop_reason?: string;
 	};
-	toolUseResult?: unknown;
 }
 
-// The exact toolUseResult value Claude Code writes on a user entry when a tool
-// approval is rejected with no correction message. Such a rejection halts the
-// conversation (no follow-up API call), so the session is idle.
-const REJECTED_TOOL_RESULT = 'User rejected tool use';
+// Text Claude Code writes as a trailing user entry when a tool approval is
+// rejected or the model is interrupted. The conversation halts at this marker
+// (no follow-up API call), so the session is idle until the user types again.
+const INTERRUPT_MARKERS = new Set([
+	'[Request interrupted by user for tool use]',
+	'[Request interrupted by user]',
+]);
 
 export class ConversationLogReader {
 	private readonly jsonlRoot: string;
@@ -101,6 +103,22 @@ function hasToolUseBlock(entry: ParsedEntry): boolean {
 	);
 }
 
+// Returns the text of a user entry, whether content is a plain string or the
+// text block of a content array; undefined when the entry carries no text.
+function userEntryText(entry: ParsedEntry): string | undefined {
+	const content = entry.message?.content;
+	if (typeof content === 'string') return content;
+	if (Array.isArray(content)) return content.find((block) => block.type === 'text')?.text;
+	return undefined;
+}
+
+// Returns true when a user entry's text is an interrupt marker (tool rejection
+// or model interrupt), meaning the conversation has halted awaiting the user.
+function isInterruptMarker(entry: ParsedEntry): boolean {
+	const text = userEntryText(entry);
+	return text !== undefined && INTERRUPT_MARKERS.has(text.trim());
+}
+
 // Maps the parsed entries (in order) to a ConversationState. Synthetic entry
 // types like 'attachment', 'pr-link', 'file-history-snapshot', 'ai-title',
 // 'agent-name', 'last-prompt', 'permission-mode', 'system' are ignored — only
@@ -133,6 +151,6 @@ function classify(entries: ParsedEntry[]): ConversationState {
 	if (lastPendingToolIdx > lastUserIdx) return { kind: 'pendingToolApproval' };
 	const lastConv = entries[lastConvIdx];
 	if (lastConv.type === 'assistant') return { kind: 'assistantDone' };
-	if (lastConv.toolUseResult === REJECTED_TOOL_RESULT) return { kind: 'userRejectedTool' };
+	if (isInterruptMarker(lastConv)) return { kind: 'userInterrupted' };
 	return { kind: 'userTurn' };
 }
