@@ -127,6 +127,8 @@ export class StatusResolver {
 		}
 
 		if (state.kind === 'userTurn') return make(SessionStatus.Executing);
+		// A rejected tool or interrupted model halts the conversation — nothing is running.
+		if (state.kind === 'userInterrupted') return make(SessionStatus.Idle);
 		if (state.kind === 'assistantDone') return make(SessionStatus.Idle);
 		return make(SessionStatus.Idle);
 	}

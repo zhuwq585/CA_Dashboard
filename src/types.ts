@@ -33,4 +33,5 @@ export type ConversationState =
 	| { kind: 'pendingToolApproval' }
 	| { kind: 'assistantDone' }
 	| { kind: 'userTurn' }
+	| { kind: 'userInterrupted' }
 	| { kind: 'unknown' };

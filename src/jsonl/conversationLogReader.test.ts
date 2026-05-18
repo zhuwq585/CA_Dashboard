@@ -57,6 +57,47 @@ const userMessage = {
 	},
 };
 
+// The tool_result entry Claude Code writes when a tool approval is rejected.
+const userRejectionResult = {
+	type: 'user',
+	uuid: 'user-reject-result',
+	timestamp: '2026-05-08T03:18:30.000Z',
+	message: {
+		role: 'user',
+		content: [
+			{
+				type: 'tool_result',
+				tool_use_id: 'tu_1',
+				is_error: true,
+				content: "The user doesn't want to proceed with this tool use.",
+			},
+		],
+	},
+	toolUseResult: 'User rejected tool use',
+};
+
+// The trailing user text entry Claude Code appends after a tool rejection.
+const toolUseInterrupt = {
+	type: 'user',
+	uuid: 'user-interrupt-tool',
+	timestamp: '2026-05-08T03:18:31.000Z',
+	message: {
+		role: 'user',
+		content: [{ type: 'text', text: '[Request interrupted by user for tool use]' }],
+	},
+};
+
+// The trailing user text entry written when the model itself is interrupted.
+const modelInterrupt = {
+	type: 'user',
+	uuid: 'user-interrupt-model',
+	timestamp: '2026-05-08T03:18:32.000Z',
+	message: {
+		role: 'user',
+		content: '[Request interrupted by user]',
+	},
+};
+
 beforeEach(async () => {
 	tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ca-dash-jsonl-'));
 	reader = new ConversationLogReader({ jsonlRoot: tmpDir });
@@ -187,6 +228,31 @@ describe('ConversationLogReader.readState', () => {
 		await writeJsonl([attachment, { ...attachment, uuid: 'att-2', type: 'pr-link' }]);
 		const result = await reader.readState(CWD, SESSION_ID);
 		expect(result.state.kind).toBe('unknown');
+	});
+
+	it('C17: userInterrupted when last entry is the tool-use interrupt marker', async () => {
+		// A rejected tool writes the tool_result entry AND a trailing interrupt marker.
+		await writeJsonl([userMessage, assistantToolUse, userRejectionResult, toolUseInterrupt]);
+		const result = await reader.readState(CWD, SESSION_ID);
+		expect(result.state.kind).toBe('userInterrupted');
+	});
+
+	it('C18: userInterrupted when last entry is the model interrupt marker', async () => {
+		await writeJsonl([userMessage, assistantToolUse, modelInterrupt]);
+		const result = await reader.readState(CWD, SESSION_ID);
+		expect(result.state.kind).toBe('userInterrupted');
+	});
+
+	it('C19: userTurn when a real user message follows the interrupt marker', async () => {
+		await writeJsonl([assistantToolUse, toolUseInterrupt, userMessage]);
+		const result = await reader.readState(CWD, SESSION_ID);
+		expect(result.state.kind).toBe('userTurn');
+	});
+
+	it('C22: userInterrupted survives trailing synthetic entries', async () => {
+		await writeJsonl([assistantToolUse, userRejectionResult, toolUseInterrupt, attachment]);
+		const result = await reader.readState(CWD, SESSION_ID);
+		expect(result.state.kind).toBe('userInterrupted');
 	});
 
 	it('C12: classifies correctly when file exceeds tailBytes', async () => {

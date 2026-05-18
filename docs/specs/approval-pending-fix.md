@@ -4,6 +4,8 @@
 
 Sessions awaiting tool approval render as **Idle** instead of **Waiting**. During an approval prompt, Claude Code stops updating `~/.claude/sessions/<pid>.json`, so the resolver's `status !== "busy"` branch fires before the child-process check that would otherwise produce **Waiting**.
 
+**Follow-up (Issue #14):** when a user rejects a tool-approval prompt (or interrupts the model), Claude Code appends a `user` text entry whose content is an interrupt marker — `[Request interrupted by user for tool use]` or `[Request interrupted by user]` — and the conversation halts (no follow-up API call). The classifier saw this trailing `user` entry as `userTurn` → resolver mapped it to **Executing** indefinitely. The `userInterrupted` conversation state (below) fixes this so a halted session settles to **Idle** and the dashboard highlights it.
+
 ## Solution Summary
 
 Read the JSONL conversation log at `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`. The last entry reveals the conversation state, which (combined with the existing PID liveness and child-process checks) gives an unambiguous status.
@@ -34,6 +36,7 @@ export type ConversationState =
 	| { kind: 'pendingToolApproval' }
 	| { kind: 'assistantDone' }
 	| { kind: 'userTurn' }
+	| { kind: 'userInterrupted' }
 	| { kind: 'unknown' };
 ```
 
@@ -83,8 +86,22 @@ Replaces every `/` in `cwd` with `-`. No hashing.
    | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
    | `type === 'assistant'` AND `message.stop_reason === 'tool_use'` AND `message.content` includes a block with `type === 'tool_use'`; AND no later entry has `type === 'user'` | `pendingToolApproval` |
    | `type === 'assistant'` AND `message.stop_reason !== 'tool_use'` (or no `tool_use` content block)                                                                            | `assistantDone`       |
+   | `type === 'user'` AND its text content is an interrupt marker (see below)                                                                                                   | `userInterrupted`     |
    | `type === 'user'` AND no later entry has `type === 'assistant'`                                                                                                             | `userTurn`            |
    | otherwise                                                                                                                                                                   | `unknown`             |
+
+   The `userInterrupted` row takes precedence over the generic `userTurn` row. When a
+   user **rejects** a tool-approval prompt — or interrupts the model mid-generation —
+   Claude Code appends a `user` entry whose text content is exactly one of these
+   interrupt markers:
+   - `[Request interrupted by user for tool use]` — a tool approval was rejected
+   - `[Request interrupted by user]` — the model was interrupted
+
+   In both cases the conversation halts: Claude Code makes no follow-up API call and
+   waits for the user's next message, so the session is idle. (If the user types a
+   follow-up message, that message becomes a later `user` entry and the state classifies
+   as `userTurn` again.) A `user` entry's text content may be either a plain string or
+   the `text` field of a `text` block inside a `content` array — check both forms.
 
 6. Return `{ state, mtimeMs: stat.mtimeMs }`.
 
@@ -124,13 +141,16 @@ export interface StatusResolverOptions {
 
 4. state.kind === 'pendingToolApproval'
    4a. real children exist (filtered against helperProcesses) →  Executing
-   4b. otherwise                                              →  Waiting   ← FIX
+   4b. otherwise                                              →  Waiting
 
 5. state.kind === 'userTurn'                                  →  Executing
 
-6. state.kind === 'assistantDone'                             →  Idle
+6. state.kind === 'userInterrupted'                           →  Idle
+   (user rejected a tool or interrupted the model; conversation halted)
 
-7. state.kind === 'unknown'                                   →  Idle
+7. state.kind === 'assistantDone'                             →  Idle
+
+8. state.kind === 'unknown'                                   →  Idle
 ```
 
 The `session.status === 'busy'` check is removed. `displayName` resolution and `resolvedAt = Date.now()` are unchanged.
@@ -143,18 +163,22 @@ The `session.status === 'busy'` check is removed. `displayName` resolution and `
 
 Integration-style: real temp directories, real files. No fs mocking. `os.tmpdir()` + `fs/promises`.
 
-| ID  | Description                                                                | Expected                                        |
-| --- | -------------------------------------------------------------------------- | ----------------------------------------------- |
-| C1  | `encodeProjectPath('/Users/x/y')`                                          | `'-Users-x-y'`                                  |
-| C2  | `encodeProjectPath('/')`                                                   | `'-'`                                           |
-| C3  | Last line: assistant `tool_use` with `tool_use` content block              | `state.kind === 'pendingToolApproval'`          |
-| C4  | Last line: assistant `end_turn`                                            | `state.kind === 'assistantDone'`                |
-| C5  | Last line: user message                                                    | `state.kind === 'userTurn'`                     |
-| C6  | JSONL file does not exist                                                  | `state.kind === 'unknown'`                      |
-| C7  | JSONL file empty                                                           | `state.kind === 'unknown'`                      |
-| C8  | Trailing partial JSON (mid-write race)                                     | Skips partial line; classifies prior valid line |
-| C9  | Assistant `tool_use` followed by another assistant entry (no `user` since) | `state.kind === 'pendingToolApproval'`          |
-| C10 | `mtimeMs` returned matches `fs.stat` mtime                                 | `mtimeMs` defined and within ±5ms of stat       |
+| ID  | Description                                                                        | Expected                                        |
+| --- | ---------------------------------------------------------------------------------- | ----------------------------------------------- |
+| C1  | `encodeProjectPath('/Users/x/y')`                                                  | `'-Users-x-y'`                                  |
+| C2  | `encodeProjectPath('/')`                                                           | `'-'`                                           |
+| C3  | Last line: assistant `tool_use` with `tool_use` content block                      | `state.kind === 'pendingToolApproval'`          |
+| C4  | Last line: assistant `end_turn`                                                    | `state.kind === 'assistantDone'`                |
+| C5  | Last line: user message                                                            | `state.kind === 'userTurn'`                     |
+| C6  | JSONL file does not exist                                                          | `state.kind === 'unknown'`                      |
+| C7  | JSONL file empty                                                                   | `state.kind === 'unknown'`                      |
+| C8  | Trailing partial JSON (mid-write race)                                             | Skips partial line; classifies prior valid line |
+| C9  | Assistant `tool_use` followed by another assistant entry (no `user` since)         | `state.kind === 'pendingToolApproval'`          |
+| C10 | `mtimeMs` returned matches `fs.stat` mtime                                         | `mtimeMs` defined and within ±5ms of stat       |
+| C17 | Last line: `user` entry, text content `[Request interrupted by user for tool use]` | `state.kind === 'userInterrupted'`              |
+| C18 | Last line: `user` entry, text content `[Request interrupted by user]`              | `state.kind === 'userInterrupted'`              |
+| C19 | Interrupt marker followed by a real `user` message                                 | `state.kind === 'userTurn'`                     |
+| C22 | Interrupt marker followed only by synthetic entries                                | `state.kind === 'userInterrupted'`              |
 
 ### statusResolver.test.ts additions
 
@@ -180,6 +204,7 @@ Existing `tinyexec` mocking pattern (`vi.mock('tinyexec')`) for `ps`/`pgrep` sta
 | R-J8  | Hanging when BOTH `updatedAt` and JSONL mtime are stale                         | state = `assistantDone`, both `now - 121_000`                                              | `Hanging`   |
 | R-J9  | NOT Hanging — long-running tool (fresh `updatedAt`, stale mtime, real children) | state = `pendingToolApproval`, mtime stale, `updatedAt = now`, child `bash`                | `Executing` |
 | R-J10 | NOT Hanging — approval prompt (stale `updatedAt`, fresh mtime)                  | state = `pendingToolApproval`, mtime fresh, `updatedAt = now - 121_000`, only `caffeinate` | `Waiting`   |
+| R-J14 | Tool rejected / model interrupted — conversation halted                         | state = `userInterrupted`                                                                  | `Idle`      |
 
 ### Existing resolver tests
 
