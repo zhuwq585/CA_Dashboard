@@ -8,7 +8,7 @@ import { StatusResolver } from './resolver/statusResolver.js';
 import { Dashboard } from './ui/Dashboard.js';
 import { ConfigStore, type DashboardConfig } from './persistence/configStore.js';
 
-const store  = new ConfigStore(path.join(os.homedir(), '.ca-dashboard', 'settings.json'));
+const store = new ConfigStore(path.join(os.homedir(), '.ca-dashboard', 'settings.json'));
 const config = store.load();
 
 const watcher = new SessionFileWatcher();
@@ -18,11 +18,15 @@ let currentSessions: ResolvedSession[] = [];
 
 function makeProps() {
 	return {
-		sessions:         currentSessions,
-		initialConfig:    config,
-		onConfigChange:   (c: DashboardConfig) => store.save(c),
+		sessions: currentSessions,
+		initialConfig: config,
+		onConfigChange: (c: DashboardConfig) => store.save(c),
 		onIntervalChange: (ms: number) => watcher.setTickInterval(ms),
-		onExit:           () => { watcher.stop(); unmount(); process.exit(0); },
+		onExit: () => {
+			watcher.stop();
+			unmount();
+			process.exit(0);
+		},
 	};
 }
 
