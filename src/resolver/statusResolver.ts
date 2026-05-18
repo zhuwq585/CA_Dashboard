@@ -123,7 +123,10 @@ export class StatusResolver {
 		if (state.kind === 'pendingToolApproval') {
 			const childCommands = await getChildCommands(session.pid);
 			const realChildren = childCommands.filter((cmd) => !this.helperProcesses.includes(cmd));
-			return make(realChildren.length > 0 ? SessionStatus.Executing : SessionStatus.Waiting);
+			if (realChildren.length > 0) return make(SessionStatus.Executing);
+			// session.status='waiting' already returned Waiting above; reaching here means
+			// the approval was resolved without a follow-up JSONL entry (silent rejection).
+			return make(SessionStatus.Idle);
 		}
 
 		if (state.kind === 'userTurn') return make(SessionStatus.Executing);
