@@ -124,7 +124,9 @@ export interface StatusResolverOptions {
 
 4. state.kind === 'pendingToolApproval'
    4a. real children exist (filtered against helperProcesses) →  Executing
-   4b. otherwise                                              →  Waiting   ← FIX
+   4b. otherwise                                              →  Idle
+       (session.status='waiting' was already caught by step 3b; reaching
+        4b means the approval was resolved — silent rejection path)
 
 5. state.kind === 'userTurn'                                  →  Executing
 
@@ -170,7 +172,7 @@ Existing `tinyexec` mocking pattern (`vi.mock('tinyexec')`) for `ps`/`pgrep` sta
 
 | ID    | Description                                                                     | Setup                                                                                      | Expected    |
 | ----- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------- |
-| R-J1  | Approval pending, no real children                                              | state = `pendingToolApproval`, children = `['caffeinate']`                                 | `Waiting`   |
+| R-J1  | Silent rejection — pendingToolApproval, no real children, status not 'waiting'  | state = `pendingToolApproval`, children = `['caffeinate']`                                 | `Idle`      |
 | R-J2  | Tool actively running                                                           | state = `pendingToolApproval`, children = `['bash']`                                       | `Executing` |
 | R-J3  | Conversation done — assistant finished, no pending action                       | state = `assistantDone`                                                                    | `Idle`      |
 | R-J4  | Model generating response                                                       | state = `userTurn`                                                                         | `Executing` |
@@ -179,7 +181,7 @@ Existing `tinyexec` mocking pattern (`vi.mock('tinyexec')`) for `ps`/`pgrep` sta
 | R-J7  | Dead PID overrides JSONL                                                        | `isPidAlive` false, state = `pendingToolApproval`                                          | `Dead`      |
 | R-J8  | Hanging when BOTH `updatedAt` and JSONL mtime are stale                         | state = `assistantDone`, both `now - 121_000`                                              | `Hanging`   |
 | R-J9  | NOT Hanging — long-running tool (fresh `updatedAt`, stale mtime, real children) | state = `pendingToolApproval`, mtime stale, `updatedAt = now`, child `bash`                | `Executing` |
-| R-J10 | NOT Hanging — approval prompt (stale `updatedAt`, fresh mtime)                  | state = `pendingToolApproval`, mtime fresh, `updatedAt = now - 121_000`, only `caffeinate` | `Waiting`   |
+| R-J10 | NOT Hanging — silent rejection (stale `updatedAt`, fresh mtime, no children)    | state = `pendingToolApproval`, mtime fresh, `updatedAt = now - 121_000`, only `caffeinate` | `Idle`      |
 
 ### Existing resolver tests
 
