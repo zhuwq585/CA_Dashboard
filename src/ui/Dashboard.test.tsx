@@ -4,6 +4,7 @@ import { render } from 'ink-testing-library';
 import { SessionStatus } from '../types.js';
 import type { ResolvedSession } from '../types.js';
 import { Dashboard } from './Dashboard.js';
+import type { DashboardConfig } from '../persistence/configStore.js';
 
 // Mock useWindowSize so scroll tests can control terminal rows.
 // Default returns a large terminal (999 rows) matching ink-testing-library behaviour;
@@ -1480,8 +1481,6 @@ describe('Highlight color-only', () => {
 
 // --- Persistent config: P10–P19 ---
 
-import type { DashboardConfig } from '../persistence/configStore.js';
-
 const BASE_CONFIG: DashboardConfig = {
 	watchedIds:  [],
 	hiddenIds:   [],
@@ -1491,17 +1490,19 @@ const BASE_CONFIG: DashboardConfig = {
 };
 
 describe('Persistent config — initialConfig seeds state', () => {
-	it('P10: initialConfig.watchedIds seeds watch list', async () => {
-		const s1 = makeSession({ displayName: 'sess-a', sessionInfo: { pid: 10, sessionId: 'p10-id-1', cwd: '/a', startedAt: 0, kind: 'interactive', entrypoint: 'cli' } });
-		const s2 = makeSession({ displayName: 'sess-b', sessionInfo: { pid: 11, sessionId: 'p10-id-2', cwd: '/b', startedAt: 0, kind: 'interactive', entrypoint: 'cli' } });
+	it('P10: initialConfig.watchedIds seeds watch list and filters out unwatched sessions', async () => {
+		const s1 = makeSession({ displayName: 'sess-a',       sessionInfo: { pid: 10, sessionId: 'p10-id-1', cwd: '/a', startedAt: 0, kind: 'interactive', entrypoint: 'cli' } });
+		const s2 = makeSession({ displayName: 'sess-b',       sessionInfo: { pid: 11, sessionId: 'p10-id-2', cwd: '/b', startedAt: 0, kind: 'interactive', entrypoint: 'cli' } });
+		const s3 = makeSession({ displayName: 'sess-c-unwatched', sessionInfo: { pid: 12, sessionId: 'p10-id-3', cwd: '/c', startedAt: 0, kind: 'interactive', entrypoint: 'cli' } });
 		const config: DashboardConfig = { ...BASE_CONFIG, watchedIds: ['p10-id-1', 'p10-id-2'] };
 		const { lastFrame } = render(
-			React.createElement(Dashboard, { sessions: [s1, s2], onExit: vi.fn(), initialConfig: config })
+			React.createElement(Dashboard, { sessions: [s1, s2, s3], onExit: vi.fn(), initialConfig: config })
 		);
 		await tick();
 		const frame = lastFrame()!;
 		expect(frame).toContain('sess-a');
 		expect(frame).toContain('sess-b');
+		expect(frame).not.toContain('sess-c-unwatched');
 	});
 
 	it('P11: initialConfig.hiddenIds hides session on mount', async () => {

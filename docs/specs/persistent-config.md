@@ -124,7 +124,10 @@ const [intervalIdx, setIntervalIdx] = useState<number>(() => {
 	const idx = PRESETS_MS.indexOf((initialConfig?.intervalMs ?? 1000) as typeof PRESETS_MS[number]);
 	return idx >= 0 ? idx : 1;
 });
-// sortMethod will read initialConfig?.sortMethod once multi-sort spec is merged
+const [sortMethod, setSortMethod] = useState<SortMethod>(() => {
+	const m = initialConfig?.sortMethod;
+	return (SORT_METHODS as string[]).includes(m ?? '') ? m as SortMethod : SortMethod.Time;
+});
 ```
 
 State variables intentionally NOT persisted (transient UI state):
@@ -142,9 +145,9 @@ useEffect(() => {
 		hiddenIds:   [...hiddenIds],
 		customNames: Object.fromEntries(customNames),
 		intervalMs:  PRESETS_MS[intervalIdx],
-		sortMethod:  'time',   // placeholder until multi-sort is merged
+		sortMethod,
 	});
-}, [watchedIds, hiddenIds, customNames, intervalIdx]); // eslint-disable-line react-hooks/exhaustive-deps
+}, [watchedIds, hiddenIds, customNames, intervalIdx, sortMethod]); // eslint-disable-line react-hooks/exhaustive-deps
 ```
 
 `onConfigChange` fires on initial mount as well (writing the loaded values back). This is harmless — the values are identical to what was just read.
@@ -247,7 +250,7 @@ Uses `fs.mkdtempSync` to create a temporary directory per test; cleans up in `af
 | `onConfigChange` as prop | Passed from `index.ts` | Same testability reason; `index.ts` wires it to `store.save()` |
 | `highlightedIds` not persisted | Intentional | Transient: reflects status changes since last view, not a user preference |
 | `settingsCursor` not persisted | Intentional | Transient UI position state |
-| `sortMethod` in schema | Yes (placeholder `'time'`) | Forward-compatible; state will be wired once multi-sort spec (`docs/specs/multi-sort.md`) is merged |
+| `sortMethod` in schema | Yes, fully wired | Multi-sort (`docs/specs/multi-sort.md`) is merged; `sortMethod` is seeded from `initialConfig` and saved on change |
 | `onIntervalChange` fix | Wired in this spec | Pre-existing gap; natural place to fix since index.ts is already being modified |
 
 ---
