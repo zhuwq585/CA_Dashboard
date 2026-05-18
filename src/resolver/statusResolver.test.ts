@@ -153,7 +153,7 @@ describe('StatusResolver.resolve', () => {
 		expect(result.status).toBe(SessionStatus.Hanging);
 	});
 
-	it('R14: custom helperProcesses respected — all children filtered → Idle', async () => {
+	it('R14: custom helperProcesses respected', async () => {
 		mockPsAndPgrep(1234, true, ['node']);
 		const resolver = new StatusResolver({
 			helperProcesses: ['node'],
@@ -161,19 +161,19 @@ describe('StatusResolver.resolve', () => {
 		});
 		const session = { ...baseSession, updatedAt: NOW };
 		const [result] = await resolver.resolve([session]);
-		expect(result.status).toBe(SessionStatus.Idle);
+		expect(result.status).toBe(SessionStatus.Waiting);
 	});
 
 	// --- JSONL-based decision tree tests ---
 
-	it('R-J1: Silent rejection — pendingToolApproval, no real children, status not "waiting"', async () => {
+	it('R-J1: Waiting — pendingToolApproval, no real children', async () => {
 		mockPsAndPgrep(1234, true, ['caffeinate']);
 		const resolver = new StatusResolver({
 			logReader: stubReader({ kind: 'pendingToolApproval' }, NOW),
 		});
 		const session = { ...baseSession, updatedAt: NOW };
 		const [result] = await resolver.resolve([session]);
-		expect(result.status).toBe(SessionStatus.Idle);
+		expect(result.status).toBe(SessionStatus.Waiting);
 	});
 
 	it('R-J2: Executing — pendingToolApproval, real children present', async () => {
@@ -250,17 +250,16 @@ describe('StatusResolver.resolve', () => {
 		expect(result.status).toBe(SessionStatus.Executing);
 	});
 
-	it('R-J11b: systemd-inhibit is filtered (Linux parity with caffeinate) — no real children → Idle', async () => {
+	it('R-J11b: systemd-inhibit is filtered (Linux parity with caffeinate)', async () => {
 		// On Linux, Claude Code uses systemd-inhibit instead of caffeinate to keep
 		// the system awake. It must be treated as a helper, not a real child.
-		// With no real children and status not 'waiting', the silent rejection path fires.
 		mockPsAndPgrep(1234, true, ['systemd-inhibit']);
 		const resolver = new StatusResolver({
 			logReader: stubReader({ kind: 'pendingToolApproval' }, NOW),
 		});
 		const session = { ...baseSession, updatedAt: NOW };
 		const [result] = await resolver.resolve([session]);
-		expect(result.status).toBe(SessionStatus.Idle);
+		expect(result.status).toBe(SessionStatus.Waiting);
 	});
 
 	it('R-J12: lastActiveMs falls back to JSONL mtime when updatedAt is missing', async () => {
@@ -298,27 +297,15 @@ describe('StatusResolver.resolve', () => {
 		expect(result.status).toBe(SessionStatus.Waiting);
 	});
 
-	it('R-J12: Waiting — pendingToolApproval, only helper children, status="waiting" (step 3b guard)', async () => {
-		// Confirms the session.status='waiting' guard fires before the child-process check.
-		// Even though all children are helpers (would yield Idle), the explicit status wins.
-		mockPsAndPgrep(1234, true, ['caffeinate']);
-		const resolver = new StatusResolver({
-			logReader: stubReader({ kind: 'pendingToolApproval' }, NOW),
-		});
-		const session = { ...baseSession, status: 'waiting', updatedAt: NOW };
-		const [result] = await resolver.resolve([session]);
-		expect(result.status).toBe(SessionStatus.Waiting);
-	});
-
-	it('R-J10: NOT Hanging — silent rejection (stale updatedAt, fresh mtime, no children)', async () => {
-		// Silent rejection: session.updatedAt is stale but JSONL mtime is fresh.
-		// No real children and status is not 'waiting' — the approval was resolved silently.
+	it('R-J10: Waiting — approval-pending with stale updatedAt (JSONL still fresh)', async () => {
+		// Approval prompt: session.updatedAt stops ticking but the JSONL was just updated
+		// by the assistant requesting the tool. Don't misclassify as Hanging.
 		mockPsAndPgrep(1234, true, ['caffeinate']);
 		const resolver = new StatusResolver({
 			logReader: stubReader({ kind: 'pendingToolApproval' }, NOW),
 		});
 		const session = { ...baseSession, updatedAt: NOW - 8_000_000 };
 		const [result] = await resolver.resolve([session]);
-		expect(result.status).toBe(SessionStatus.Idle);
+		expect(result.status).toBe(SessionStatus.Waiting);
 	});
 });
