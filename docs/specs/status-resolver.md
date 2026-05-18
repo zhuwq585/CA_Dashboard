@@ -3,6 +3,7 @@
 ## Scope
 
 One source file:
+
 - `src/resolver/statusResolver.ts` — takes `SessionInfo[]` from the watcher, runs OS process checks, and returns `ResolvedSession[]`
 
 Read `docs/architecture.md` and `docs/specs/session-watcher-types.md` before implementing.
@@ -15,10 +16,10 @@ The following types are defined in `src/types.ts` (feature `session-watcher-type
 import { SessionInfo, SessionStatus, ResolvedSession } from '../types.js';
 ```
 
-| Type | Defined in |
-|---|---|
-| `SessionInfo` | `src/types.ts` |
-| `SessionStatus` | `src/types.ts` |
+| Type              | Defined in     |
+| ----------------- | -------------- |
+| `SessionInfo`     | `src/types.ts` |
+| `SessionStatus`   | `src/types.ts` |
 | `ResolvedSession` | `src/types.ts` |
 
 ---
@@ -28,8 +29,8 @@ import { SessionInfo, SessionStatus, ResolvedSession } from '../types.js';
 ### Constants
 
 ```typescript
-const HANGING_THRESHOLD_MS = 120_000;          // 2 minutes
-const HELPER_PROCESSES     = ['caffeinate'];   // always-present Claude Code children to ignore
+const HANGING_THRESHOLD_MS = 120_000; // 2 minutes
+const HELPER_PROCESSES = ['caffeinate']; // always-present Claude Code children to ignore
 ```
 
 Both should be overridable via options (see below).
@@ -38,8 +39,8 @@ Both should be overridable via options (see below).
 
 ```typescript
 export interface StatusResolverOptions {
-	hangingThresholdMs?: number;   // default: 120_000
-	helperProcesses?:    string[]; // default: ['caffeinate']
+	hangingThresholdMs?: number; // default: 120_000
+	helperProcesses?: string[]; // default: ['caffeinate']
 }
 
 export class StatusResolver {
@@ -95,11 +96,11 @@ Extracted into a pure helper function `resolveDisplayName(session: SessionInfo):
 Two private async functions wrap `tinyexec`. They are the only places that call `tinyexec` in this module, making them the sole mock target in tests.
 
 ```typescript
-async function isPidAlive(pid: number): Promise<boolean>
+async function isPidAlive(pid: number): Promise<boolean>;
 // Runs: ps -p <pid>
 // Returns true if exit code 0, false otherwise.
 
-async function getChildCommands(pid: number): Promise<string[]>
+async function getChildCommands(pid: number): Promise<string[]>;
 // Runs: pgrep -P <pid> -a  (or two calls: pgrep -P to get pids, ps to get comm names)
 // Returns the command names of all child processes.
 // Returns [] if pgrep exits non-zero (no children).
@@ -155,34 +156,34 @@ const busySession: SessionInfo = {
 	...baseSession,
 	name: 'my-project',
 	status: 'busy',
-	updatedAt: Date.now(),   // set fresh in each test via vi.setSystemTime
+	updatedAt: Date.now(), // set fresh in each test via vi.setSystemTime
 };
 ```
 
 ### `resolveDisplayName` tests (pure, no mocking needed)
 
-| ID | Description | Input | Expected |
-|---|---|---|---|
-| D1 | Uses `name` when present | `{ name: 'foo', cwd: '/a/b', sessionId: '12345678abcd' }` | `'foo'` |
-| D2 | Falls back to `basename(cwd)` when no name | `{ cwd: '/home/user/my-project', sessionId: '12345678abcd' }` | `'my-project'` |
-| D3 | Falls back to 8-char sessionId when cwd is root | `{ cwd: '/', sessionId: '12345678abcd' }` | `'12345678'` |
-| D4 | Falls back to 8-char sessionId when cwd is empty string | `{ cwd: '', sessionId: '12345678abcd' }` | `'12345678'` |
+| ID  | Description                                             | Input                                                         | Expected       |
+| --- | ------------------------------------------------------- | ------------------------------------------------------------- | -------------- |
+| D1  | Uses `name` when present                                | `{ name: 'foo', cwd: '/a/b', sessionId: '12345678abcd' }`     | `'foo'`        |
+| D2  | Falls back to `basename(cwd)` when no name              | `{ cwd: '/home/user/my-project', sessionId: '12345678abcd' }` | `'my-project'` |
+| D3  | Falls back to 8-char sessionId when cwd is root         | `{ cwd: '/', sessionId: '12345678abcd' }`                     | `'12345678'`   |
+| D4  | Falls back to 8-char sessionId when cwd is empty string | `{ cwd: '', sessionId: '12345678abcd' }`                      | `'12345678'`   |
 
 ### `resolve()` decision tree tests
 
-| ID | Description | Setup | Expected `status` |
-|---|---|---|---|
-| R1 | Dead — ps fails | `isPidAlive` returns false | `SessionStatus.Dead` |
-| R2 | Idle — old schema (no `status` field) | PID alive; `session.status` undefined | `SessionStatus.Idle` |
-| R3 | Idle — status is not `'busy'` | PID alive; `session.status = 'idle'` | `SessionStatus.Idle` |
-| R4 | Hanging — `updatedAt` older than threshold | PID alive; `status: 'busy'`; `updatedAt` set to `now - 121_000` | `SessionStatus.Hanging` |
-| R5 | Hanging boundary — exactly at threshold | PID alive; `updatedAt` set to `now - 120_000` | `SessionStatus.Hanging` |
-| R6 | Executing — has real child processes | PID alive; `status: 'busy'`; fresh `updatedAt`; children: `['node']` | `SessionStatus.Executing` |
-| R7 | Waiting — only helper child (caffeinate) | PID alive; `status: 'busy'`; fresh `updatedAt`; children: `['caffeinate']` | `SessionStatus.Waiting` |
-| R8 | Executing — caffeinate plus real child | PID alive; `status: 'busy'`; fresh `updatedAt`; children: `['caffeinate', 'bash']` | `SessionStatus.Executing` |
-| R9 | Waiting — no child processes at all | PID alive; `status: 'busy'`; fresh `updatedAt`; children: `[]` | `SessionStatus.Waiting` |
-| R10 | Dead session has correct displayName | `isPidAlive` false; `session.name = 'proj'` | `displayName: 'proj'` |
-| R11 | `resolvedAt` is close to `Date.now()` | Any session | `resolvedAt` within 100ms of `Date.now()` |
-| R12 | Multiple sessions resolved concurrently | 3 sessions with different statuses | All 3 returned; correct status each |
-| R13 | Custom `hangingThresholdMs` respected | Threshold set to `30_000`; `updatedAt` is `31_000` ms old | `SessionStatus.Hanging` |
-| R14 | Custom `helperProcesses` respected | Helper list set to `['node']`; only child is `'node'` | `SessionStatus.Waiting` |
+| ID  | Description                                | Setup                                                                              | Expected `status`                         |
+| --- | ------------------------------------------ | ---------------------------------------------------------------------------------- | ----------------------------------------- |
+| R1  | Dead — ps fails                            | `isPidAlive` returns false                                                         | `SessionStatus.Dead`                      |
+| R2  | Idle — old schema (no `status` field)      | PID alive; `session.status` undefined                                              | `SessionStatus.Idle`                      |
+| R3  | Idle — status is not `'busy'`              | PID alive; `session.status = 'idle'`                                               | `SessionStatus.Idle`                      |
+| R4  | Hanging — `updatedAt` older than threshold | PID alive; `status: 'busy'`; `updatedAt` set to `now - 121_000`                    | `SessionStatus.Hanging`                   |
+| R5  | Hanging boundary — exactly at threshold    | PID alive; `updatedAt` set to `now - 120_000`                                      | `SessionStatus.Hanging`                   |
+| R6  | Executing — has real child processes       | PID alive; `status: 'busy'`; fresh `updatedAt`; children: `['node']`               | `SessionStatus.Executing`                 |
+| R7  | Waiting — only helper child (caffeinate)   | PID alive; `status: 'busy'`; fresh `updatedAt`; children: `['caffeinate']`         | `SessionStatus.Waiting`                   |
+| R8  | Executing — caffeinate plus real child     | PID alive; `status: 'busy'`; fresh `updatedAt`; children: `['caffeinate', 'bash']` | `SessionStatus.Executing`                 |
+| R9  | Waiting — no child processes at all        | PID alive; `status: 'busy'`; fresh `updatedAt`; children: `[]`                     | `SessionStatus.Waiting`                   |
+| R10 | Dead session has correct displayName       | `isPidAlive` false; `session.name = 'proj'`                                        | `displayName: 'proj'`                     |
+| R11 | `resolvedAt` is close to `Date.now()`      | Any session                                                                        | `resolvedAt` within 100ms of `Date.now()` |
+| R12 | Multiple sessions resolved concurrently    | 3 sessions with different statuses                                                 | All 3 returned; correct status each       |
+| R13 | Custom `hangingThresholdMs` respected      | Threshold set to `30_000`; `updatedAt` is `31_000` ms old                          | `SessionStatus.Hanging`                   |
+| R14 | Custom `helperProcesses` respected         | Helper list set to `['node']`; only child is `'node'`                              | `SessionStatus.Waiting`                   |

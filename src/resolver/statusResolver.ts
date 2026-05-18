@@ -17,8 +17,8 @@ const HELPER_PROCESSES = ['caffeinate', 'systemd-inhibit'];
 
 export interface StatusResolverOptions {
 	hangingThresholdMs?: number;
-	helperProcesses?:    string[];
-	logReader?:          ConversationLogReader;
+	helperProcesses?: string[];
+	logReader?: ConversationLogReader;
 }
 
 // Returns the maximum of two optional epoch-ms values, or undefined if both are absent.
@@ -56,7 +56,7 @@ async function getChildCommands(pid: number): Promise<string[]> {
 		const result = await x('pgrep', ['-P', String(pid), '-l']);
 		return result.stdout
 			.split('\n')
-			.map(line => {
+			.map((line) => {
 				const parts = line.trim().split(/\s+/);
 				return parts.length >= 2 ? path.basename(parts[1]) : '';
 			})
@@ -68,26 +68,26 @@ async function getChildCommands(pid: number): Promise<string[]> {
 
 export class StatusResolver {
 	private readonly hangingThresholdMs: number;
-	private readonly helperProcesses:    string[];
-	private readonly logReader:          ConversationLogReader;
+	private readonly helperProcesses: string[];
+	private readonly logReader: ConversationLogReader;
 
 	constructor(options?: StatusResolverOptions) {
 		this.hangingThresholdMs = options?.hangingThresholdMs ?? HANGING_THRESHOLD_MS;
-		this.helperProcesses    = options?.helperProcesses    ?? HELPER_PROCESSES;
-		this.logReader          = options?.logReader          ?? new ConversationLogReader();
+		this.helperProcesses = options?.helperProcesses ?? HELPER_PROCESSES;
+		this.logReader = options?.logReader ?? new ConversationLogReader();
 	}
 
 	// Resolves the status of all sessions concurrently.
 	async resolve(sessions: SessionInfo[]): Promise<ResolvedSession[]> {
-		return Promise.all(sessions.map(session => this.resolveOne(session)));
+		return Promise.all(sessions.map((session) => this.resolveOne(session)));
 	}
 
 	// Applies the JSONL-driven decision tree to a single session.
 	private async resolveOne(session: SessionInfo): Promise<ResolvedSession> {
 		const displayName = resolveDisplayName(session);
-		const resolvedAt  = Date.now();
+		const resolvedAt = Date.now();
 
-		if (!await isPidAlive(session.pid)) {
+		if (!(await isPidAlive(session.pid))) {
 			return { sessionInfo: session, status: SessionStatus.Dead, displayName, resolvedAt };
 		}
 
@@ -96,7 +96,13 @@ export class StatusResolver {
 		// Most recent of session.updatedAt and JSONL mtime — used for Hanging check and
 		// rendered as "Last Active" by the UI. Falls back gracefully when either is missing.
 		const lastActiveMs = pickLatest(session.updatedAt, mtimeMs);
-		const make = (status: SessionStatus): ResolvedSession => ({ sessionInfo: session, status, displayName, resolvedAt, lastActiveMs });
+		const make = (status: SessionStatus): ResolvedSession => ({
+			sessionInfo: session,
+			status,
+			displayName,
+			resolvedAt,
+			lastActiveMs,
+		});
 
 		// Hanging only when ALL available activity signals are stale. A long-running tool
 		// can leave the JSONL untouched for minutes while session.updatedAt keeps ticking
@@ -104,8 +110,8 @@ export class StatusResolver {
 		// session is alive, so don't flag Hanging.
 		const ages: number[] = [];
 		if (session.updatedAt !== undefined) ages.push(resolvedAt - session.updatedAt);
-		if (mtimeMs           !== undefined) ages.push(resolvedAt - mtimeMs);
-		if (ages.length > 0 && ages.every(age => age >= this.hangingThresholdMs)) {
+		if (mtimeMs !== undefined) ages.push(resolvedAt - mtimeMs);
+		if (ages.length > 0 && ages.every((age) => age >= this.hangingThresholdMs)) {
 			return make(SessionStatus.Hanging);
 		}
 
@@ -116,11 +122,11 @@ export class StatusResolver {
 
 		if (state.kind === 'pendingToolApproval') {
 			const childCommands = await getChildCommands(session.pid);
-			const realChildren  = childCommands.filter(cmd => !this.helperProcesses.includes(cmd));
+			const realChildren = childCommands.filter((cmd) => !this.helperProcesses.includes(cmd));
 			return make(realChildren.length > 0 ? SessionStatus.Executing : SessionStatus.Waiting);
 		}
 
-		if (state.kind === 'userTurn')      return make(SessionStatus.Executing);
+		if (state.kind === 'userTurn') return make(SessionStatus.Executing);
 		if (state.kind === 'assistantDone') return make(SessionStatus.Idle);
 		return make(SessionStatus.Idle);
 	}

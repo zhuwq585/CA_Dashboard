@@ -2,12 +2,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { x, type Result } from 'tinyexec';
 import { SessionInfo, SessionStatus, ConversationState } from '../types.js';
 import { StatusResolver, resolveDisplayName } from './statusResolver.js';
-import { ConversationLogReader, type ConversationStateResult } from '../jsonl/conversationLogReader.js';
+import {
+	ConversationLogReader,
+	type ConversationStateResult,
+} from '../jsonl/conversationLogReader.js';
 
 vi.mock('tinyexec');
 const mockX = vi.mocked(x);
 
-const ok = (stdout = ''): Result => ({ stdout, stderr: '', exitCode: 0 } as unknown as Result);
+const ok = (stdout = ''): Result => ({ stdout, stderr: '', exitCode: 0 }) as unknown as Result;
 
 function mockPs(pid: number, alive: boolean) {
 	mockX.mockImplementation((async (cmd: string, args?: string[]) => {
@@ -123,8 +126,10 @@ describe('StatusResolver.resolve', () => {
 
 		const reader = {
 			readState: vi.fn().mockImplementation(async (_cwd: string, sessionId: string) => {
-				if (sessionId === 'sess-1') return { state: { kind: 'pendingToolApproval' as const }, mtimeMs: NOW };
-				if (sessionId === 'sess-2') return { state: { kind: 'assistantDone' as const }, mtimeMs: NOW - 8_000_000 };
+				if (sessionId === 'sess-1')
+					return { state: { kind: 'pendingToolApproval' as const }, mtimeMs: NOW };
+				if (sessionId === 'sess-2')
+					return { state: { kind: 'assistantDone' as const }, mtimeMs: NOW - 8_000_000 };
 				return { state: { kind: 'unknown' as const } };
 			}),
 		} as unknown as ConversationLogReader;
@@ -163,7 +168,9 @@ describe('StatusResolver.resolve', () => {
 
 	it('R-J1: Waiting — pendingToolApproval, no real children', async () => {
 		mockPsAndPgrep(1234, true, ['caffeinate']);
-		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'pendingToolApproval' }, NOW) });
+		const resolver = new StatusResolver({
+			logReader: stubReader({ kind: 'pendingToolApproval' }, NOW),
+		});
 		const session = { ...baseSession, updatedAt: NOW };
 		const [result] = await resolver.resolve([session]);
 		expect(result.status).toBe(SessionStatus.Waiting);
@@ -171,7 +178,9 @@ describe('StatusResolver.resolve', () => {
 
 	it('R-J2: Executing — pendingToolApproval, real children present', async () => {
 		mockPsAndPgrep(1234, true, ['bash']);
-		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'pendingToolApproval' }, NOW) });
+		const resolver = new StatusResolver({
+			logReader: stubReader({ kind: 'pendingToolApproval' }, NOW),
+		});
 		const session = { ...baseSession, updatedAt: NOW };
 		const [result] = await resolver.resolve([session]);
 		expect(result.status).toBe(SessionStatus.Executing);
@@ -195,7 +204,9 @@ describe('StatusResolver.resolve', () => {
 
 	it('R-J5: Hanging — stale JSONL mtime', async () => {
 		mockPsAndPgrep(1234, true, ['bash']);
-		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'pendingToolApproval' }, NOW - 8_000_000) });
+		const resolver = new StatusResolver({
+			logReader: stubReader({ kind: 'pendingToolApproval' }, NOW - 8_000_000),
+		});
 		const session = { ...baseSession };
 		const [result] = await resolver.resolve([session]);
 		expect(result.status).toBe(SessionStatus.Hanging);
@@ -210,14 +221,18 @@ describe('StatusResolver.resolve', () => {
 
 	it('R-J7: Dead PID overrides JSONL', async () => {
 		mockPs(1234, false);
-		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'pendingToolApproval' }, NOW) });
+		const resolver = new StatusResolver({
+			logReader: stubReader({ kind: 'pendingToolApproval' }, NOW),
+		});
 		const [result] = await resolver.resolve([baseSession]);
 		expect(result.status).toBe(SessionStatus.Dead);
 	});
 
 	it('R-J8: Hanging — both session.updatedAt and JSONL mtime stale', async () => {
 		mockPsAndPgrep(1234, true, []);
-		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'assistantDone' }, NOW - 8_000_000) });
+		const resolver = new StatusResolver({
+			logReader: stubReader({ kind: 'assistantDone' }, NOW - 8_000_000),
+		});
 		const session = { ...baseSession, updatedAt: NOW - 8_000_000 };
 		const [result] = await resolver.resolve([session]);
 		expect(result.status).toBe(SessionStatus.Hanging);
@@ -227,7 +242,9 @@ describe('StatusResolver.resolve', () => {
 		// JSONL only updates when the tool finishes; session.updatedAt keeps ticking.
 		// Hanging must NOT fire while a real child is still running.
 		mockPsAndPgrep(1234, true, ['bash']);
-		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'pendingToolApproval' }, NOW - 8_000_000) });
+		const resolver = new StatusResolver({
+			logReader: stubReader({ kind: 'pendingToolApproval' }, NOW - 8_000_000),
+		});
 		const session = { ...baseSession, updatedAt: NOW };
 		const [result] = await resolver.resolve([session]);
 		expect(result.status).toBe(SessionStatus.Executing);
@@ -237,7 +254,9 @@ describe('StatusResolver.resolve', () => {
 		// On Linux, Claude Code uses systemd-inhibit instead of caffeinate to keep
 		// the system awake. It must be treated as a helper, not a real child.
 		mockPsAndPgrep(1234, true, ['systemd-inhibit']);
-		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'pendingToolApproval' }, NOW) });
+		const resolver = new StatusResolver({
+			logReader: stubReader({ kind: 'pendingToolApproval' }, NOW),
+		});
 		const session = { ...baseSession, updatedAt: NOW };
 		const [result] = await resolver.resolve([session]);
 		expect(result.status).toBe(SessionStatus.Waiting);
@@ -247,15 +266,19 @@ describe('StatusResolver.resolve', () => {
 		// Older Claude Code (and likely Linux builds) don't write updatedAt. The UI's
 		// "Last Active" column would otherwise show "unknown". JSONL mtime is the fallback.
 		mockPsAndPgrep(1234, true, []);
-		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'assistantDone' }, NOW - 30_000) });
-		const session = { ...baseSession };  // no updatedAt
+		const resolver = new StatusResolver({
+			logReader: stubReader({ kind: 'assistantDone' }, NOW - 30_000),
+		});
+		const session = { ...baseSession }; // no updatedAt
 		const [result] = await resolver.resolve([session]);
 		expect(result.lastActiveMs).toBe(NOW - 30_000);
 	});
 
 	it('R-J13: lastActiveMs picks the more recent of updatedAt and mtime', async () => {
 		mockPsAndPgrep(1234, true, []);
-		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'assistantDone' }, NOW - 5_000) });
+		const resolver = new StatusResolver({
+			logReader: stubReader({ kind: 'assistantDone' }, NOW - 5_000),
+		});
 		const session = { ...baseSession, updatedAt: NOW - 20_000 };
 		const [result] = await resolver.resolve([session]);
 		expect(result.lastActiveMs).toBe(NOW - 5_000);
@@ -266,7 +289,9 @@ describe('StatusResolver.resolve', () => {
 		// command once approved). Without the status check, the resolver would see
 		// 'zsh' as a real child and classify Executing — wrong.
 		mockPsAndPgrep(1234, true, ['caffeinate', 'zsh']);
-		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'pendingToolApproval' }, NOW) });
+		const resolver = new StatusResolver({
+			logReader: stubReader({ kind: 'pendingToolApproval' }, NOW),
+		});
 		const session = { ...baseSession, status: 'waiting', updatedAt: NOW };
 		const [result] = await resolver.resolve([session]);
 		expect(result.status).toBe(SessionStatus.Waiting);
@@ -276,7 +301,9 @@ describe('StatusResolver.resolve', () => {
 		// Approval prompt: session.updatedAt stops ticking but the JSONL was just updated
 		// by the assistant requesting the tool. Don't misclassify as Hanging.
 		mockPsAndPgrep(1234, true, ['caffeinate']);
-		const resolver = new StatusResolver({ logReader: stubReader({ kind: 'pendingToolApproval' }, NOW) });
+		const resolver = new StatusResolver({
+			logReader: stubReader({ kind: 'pendingToolApproval' }, NOW),
+		});
 		const session = { ...baseSession, updatedAt: NOW - 8_000_000 };
 		const [result] = await resolver.resolve([session]);
 		expect(result.status).toBe(SessionStatus.Waiting);

@@ -29,9 +29,4 @@ jobs:
         run: npm run lint
 
       - name: Format
-        run: npm run format
-
-      - name: Commit formatting changes
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "style: prettier autoformat"
+        run: npm run format:check
