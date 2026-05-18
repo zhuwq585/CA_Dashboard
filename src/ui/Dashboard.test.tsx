@@ -4,6 +4,7 @@ import { render } from 'ink-testing-library';
 import { SessionStatus } from '../types.js';
 import type { ResolvedSession } from '../types.js';
 import { Dashboard } from './Dashboard.js';
+import type { DashboardConfig } from '../persistence/configStore.js';
 
 // Mock useWindowSize so scroll tests can control terminal rows.
 // Default returns a large terminal (999 rows) matching ink-testing-library behaviour;
@@ -1797,5 +1798,278 @@ describe('Highlight color-only', () => {
 		await tick();
 		const frame = lastFrame()!;
 		expect(frame.indexOf('exec-session')).toBeLessThan(frame.indexOf('idle-hilight'));
+	});
+});
+
+// --- Persistent config: P10–P19 ---
+
+const BASE_CONFIG: DashboardConfig = {
+	watchedIds: [],
+	hiddenIds: [],
+	customNames: {},
+	intervalMs: 1000,
+	sortMethod: 'time',
+};
+
+describe('Persistent config — initialConfig seeds state', () => {
+	it('P10: initialConfig.watchedIds seeds watch list and filters out unwatched sessions', async () => {
+		const s1 = makeSession({
+			displayName: 'sess-a',
+			sessionInfo: {
+				pid: 10,
+				sessionId: 'p10-id-1',
+				cwd: '/a',
+				startedAt: 0,
+				kind: 'interactive',
+				entrypoint: 'cli',
+			},
+		});
+		const s2 = makeSession({
+			displayName: 'sess-b',
+			sessionInfo: {
+				pid: 11,
+				sessionId: 'p10-id-2',
+				cwd: '/b',
+				startedAt: 0,
+				kind: 'interactive',
+				entrypoint: 'cli',
+			},
+		});
+		const s3 = makeSession({
+			displayName: 'sess-c-unwatched',
+			sessionInfo: {
+				pid: 12,
+				sessionId: 'p10-id-3',
+				cwd: '/c',
+				startedAt: 0,
+				kind: 'interactive',
+				entrypoint: 'cli',
+			},
+		});
+		const config: DashboardConfig = { ...BASE_CONFIG, watchedIds: ['p10-id-1', 'p10-id-2'] };
+		const { lastFrame } = render(
+			React.createElement(Dashboard, {
+				sessions: [s1, s2, s3],
+				onExit: vi.fn(),
+				initialConfig: config,
+			}),
+		);
+		await tick();
+		const frame = lastFrame()!;
+		expect(frame).toContain('sess-a');
+		expect(frame).toContain('sess-b');
+		expect(frame).not.toContain('sess-c-unwatched');
+	});
+
+	it('P11: initialConfig.hiddenIds hides session on mount', async () => {
+		const s1 = makeSession({
+			displayName: 'visible-sess',
+			sessionInfo: {
+				pid: 20,
+				sessionId: 'p11-id-1',
+				cwd: '/a',
+				startedAt: 0,
+				kind: 'interactive',
+				entrypoint: 'cli',
+			},
+		});
+		const s2 = makeSession({
+			displayName: 'hidden-sess',
+			sessionInfo: {
+				pid: 21,
+				sessionId: 'p11-id-2',
+				cwd: '/b',
+				startedAt: 0,
+				kind: 'interactive',
+				entrypoint: 'cli',
+			},
+		});
+		const config: DashboardConfig = { ...BASE_CONFIG, hiddenIds: ['p11-id-2'] };
+		const { lastFrame } = render(
+			React.createElement(Dashboard, {
+				sessions: [s1, s2],
+				onExit: vi.fn(),
+				initialConfig: config,
+			}),
+		);
+		await tick();
+		const frame = lastFrame()!;
+		expect(frame).toContain('visible-sess');
+		expect(frame).not.toContain('hidden-sess');
+	});
+
+	it('P12: initialConfig.customNames shows custom name on mount', async () => {
+		const s1 = makeSession({
+			displayName: 'original-name',
+			sessionInfo: {
+				pid: 30,
+				sessionId: 'p12-id-1',
+				cwd: '/a',
+				startedAt: 0,
+				kind: 'interactive',
+				entrypoint: 'cli',
+			},
+		});
+		const config: DashboardConfig = {
+			...BASE_CONFIG,
+			customNames: { 'p12-id-1': 'My Custom Name' },
+		};
+		const { lastFrame } = render(
+			React.createElement(Dashboard, { sessions: [s1], onExit: vi.fn(), initialConfig: config }),
+		);
+		await tick();
+		expect(lastFrame()!).toContain('My Custom Name');
+	});
+
+	it('P13: initialConfig.intervalMs sets interval shown in settings', async () => {
+		const config: DashboardConfig = { ...BASE_CONFIG, intervalMs: 5000 };
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions: [], onExit: vi.fn(), initialConfig: config }),
+		);
+		await tick();
+		stdin.write('t');
+		await tick();
+		expect(lastFrame()!).toContain('5s');
+	});
+
+	it('P14: unknown intervalMs falls back to 1s (default idx=1)', async () => {
+		const config: DashboardConfig = { ...BASE_CONFIG, intervalMs: 9999 };
+		const { lastFrame, stdin } = render(
+			React.createElement(Dashboard, { sessions: [], onExit: vi.fn(), initialConfig: config }),
+		);
+		await tick();
+		stdin.write('t');
+		await tick();
+		expect(lastFrame()!).toContain('1s');
+	});
+});
+
+describe('Persistent config — onConfigChange callbacks', () => {
+	it('P15: onConfigChange fires with updated watchedIds when sessions confirmed', async () => {
+		const s1 = makeSession({
+			displayName: 'sess-p15',
+			sessionInfo: {
+				pid: 50,
+				sessionId: 'p15-id-1',
+				cwd: '/a',
+				startedAt: 0,
+				kind: 'interactive',
+				entrypoint: 'cli',
+			},
+		});
+		const onChange = vi.fn<(config: DashboardConfig) => void>();
+		const { stdin } = render(
+			React.createElement(Dashboard, { sessions: [s1], onExit: vi.fn(), onConfigChange: onChange }),
+		);
+		await tick();
+		onChange.mockClear();
+		stdin.write('s');
+		await tick(); // enter select; pendingIds pre-filled
+		stdin.write('\r');
+		await tick(); // confirm → watchedIds updated
+		const calls = onChange.mock.calls;
+		expect(calls.length).toBeGreaterThan(0);
+		const last = calls[calls.length - 1][0];
+		expect(last.watchedIds).toContain('p15-id-1');
+	});
+
+	it('P16: onConfigChange fires with updated hiddenIds when session hidden', async () => {
+		const s1 = makeSession({
+			displayName: 'sess-p16',
+			sessionInfo: {
+				pid: 60,
+				sessionId: 'p16-id-1',
+				cwd: '/a',
+				startedAt: 0,
+				kind: 'interactive',
+				entrypoint: 'cli',
+			},
+		});
+		const onChange = vi.fn<(config: DashboardConfig) => void>();
+		const { stdin } = render(
+			React.createElement(Dashboard, { sessions: [s1], onExit: vi.fn(), onConfigChange: onChange }),
+		);
+		await tick();
+		onChange.mockClear();
+		stdin.write('x');
+		await tick(); // hide session
+		const calls = onChange.mock.calls;
+		expect(calls.length).toBeGreaterThan(0);
+		const last = calls[calls.length - 1][0];
+		expect(last.hiddenIds).toContain('p16-id-1');
+	});
+
+	it('P17: onConfigChange fires with updated intervalMs when interval changes', async () => {
+		const onChange = vi.fn<(config: DashboardConfig) => void>();
+		const { stdin } = render(
+			React.createElement(Dashboard, { sessions: [], onExit: vi.fn(), onConfigChange: onChange }),
+		);
+		await tick();
+		onChange.mockClear();
+		stdin.write('t');
+		await tick(); // enter settings; settingsCursor=0 (interval row)
+		stdin.write('\x1B[C');
+		await tick(); // right arrow → next interval
+		const calls = onChange.mock.calls;
+		expect(calls.length).toBeGreaterThan(0);
+		const last = calls[calls.length - 1][0];
+		expect(last.intervalMs).not.toBe(1000); // changed from default
+	});
+
+	it('P18: onConfigChange fires with updated customNames when session renamed', async () => {
+		const s1 = makeSession({
+			displayName: 'sess-p18',
+			sessionInfo: {
+				pid: 70,
+				sessionId: 'p18-id-1',
+				cwd: '/a',
+				startedAt: 0,
+				kind: 'interactive',
+				entrypoint: 'cli',
+			},
+		});
+		const onChange = vi.fn<(config: DashboardConfig) => void>();
+		const { stdin } = render(
+			React.createElement(Dashboard, { sessions: [s1], onExit: vi.fn(), onConfigChange: onChange }),
+		);
+		await tick();
+		onChange.mockClear();
+		stdin.write('s');
+		await tick(); // enter select
+		stdin.write('r');
+		await tick(); // enter rename (buffer pre-filled with 'sess-p18')
+		// clear pre-filled name (8 chars) then type new name
+		stdin.write('\x7f'.repeat(8));
+		await tick();
+		stdin.write('NewName');
+		await tick();
+		stdin.write('\r');
+		await tick(); // confirm rename
+		stdin.write('\r');
+		await tick(); // confirm watchedIds
+		const calls = onChange.mock.calls;
+		expect(calls.length).toBeGreaterThan(0);
+		const last = calls[calls.length - 1][0];
+		expect(last.customNames['p18-id-1']).toBe('NewName');
+	});
+
+	it('P19: onConfigChange config has all five required fields', async () => {
+		const onChange = vi.fn<(config: DashboardConfig) => void>();
+		const { stdin } = render(
+			React.createElement(Dashboard, { sessions: [], onExit: vi.fn(), onConfigChange: onChange }),
+		);
+		await tick();
+		stdin.write('t');
+		await tick();
+		stdin.write('\x1B[C');
+		await tick();
+		const calls = onChange.mock.calls;
+		expect(calls.length).toBeGreaterThan(0);
+		const last = calls[calls.length - 1][0];
+		expect(last).toHaveProperty('watchedIds');
+		expect(last).toHaveProperty('hiddenIds');
+		expect(last).toHaveProperty('customNames');
+		expect(last).toHaveProperty('intervalMs');
+		expect(last).toHaveProperty('sortMethod');
 	});
 });
