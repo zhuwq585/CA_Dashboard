@@ -12,6 +12,25 @@ const PRESET_LABELS = ['0.5s', '1s', '2s', '5s', '10s', '30s'] as const;
 const BUSY_STATUSES = new Set([SessionStatus.Executing, SessionStatus.Waiting]);
 const ATTENTION_STATUSES = new Set([SessionStatus.Idle, SessionStatus.Hanging, SessionStatus.Dead]);
 
+const SortMethod = { Time: 'time', Status: 'status', Name: 'name' } as const;
+type SortMethod = (typeof SortMethod)[keyof typeof SortMethod];
+
+const STATUS_RANK: Record<SessionStatus, number> = {
+	[SessionStatus.Executing]: 0,
+	[SessionStatus.Waiting]: 1,
+	[SessionStatus.Idle]: 2,
+	[SessionStatus.Hanging]: 3,
+	[SessionStatus.Dead]: 4,
+};
+
+const SORT_METHODS: SortMethod[] = [SortMethod.Time, SortMethod.Status, SortMethod.Name];
+
+const SORT_LABELS: Record<SortMethod, string> = {
+	[SortMethod.Time]: 'Time',
+	[SortMethod.Status]: 'Status',
+	[SortMethod.Name]: 'Name',
+};
+
 interface DashboardProps {
 	sessions: ResolvedSession[];
 	onExit: () => void;
@@ -34,6 +53,8 @@ export function Dashboard({
 	const prevStatusesRef = useRef<Map<string, SessionStatus>>(new Map());
 	const [highlightedIds, setHighlightedIds] = useState<Set<string>>(new Set());
 	const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+	const [sortMethod, setSortMethod] = useState<SortMethod>(SortMethod.Time);
+	const [settingsCursor, setSettingsCursor] = useState<number>(0);
 
 	// Detect status transitions and update highlightedIds.
 	useEffect(() => {
@@ -54,11 +75,17 @@ export function Dashboard({
 		setHighlightedIds(next);
 	}, [sessions]); // eslint-disable-line react-hooks/exhaustive-deps
 
-	// Sort highlighted sessions to top.
-	const sortedSessions = [
-		...sessions.filter((s) => highlightedIds.has(s.sessionInfo.sessionId)),
-		...sessions.filter((s) => !highlightedIds.has(s.sessionInfo.sessionId)),
-	];
+	const sortedSessions = [...sessions].sort((a, b) => {
+		if (sortMethod === SortMethod.Time) {
+			const ta = a.lastActiveMs ?? a.sessionInfo.updatedAt ?? 0;
+			const tb = b.lastActiveMs ?? b.sessionInfo.updatedAt ?? 0;
+			return tb - ta;
+		}
+		if (sortMethod === SortMethod.Status) {
+			return STATUS_RANK[a.status] - STATUS_RANK[b.status];
+		}
+		return a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' });
+	});
 
 	const selectSessions = sortedSessions;
 
@@ -90,12 +117,14 @@ export function Dashboard({
 					});
 			} else if (input === 'x') {
 				const id = watchSessions[clampedWatchCursor]?.sessionInfo.sessionId;
-				if (id)
+				if (id) {
 					setHiddenIds((prev) => {
 						const next = new Set(prev);
 						next.add(id);
 						return next;
 					});
+					setWatchCursor((c) => Math.min(c, Math.max(0, watchSessions.length - 2)));
+				}
 			} else if (input === 's') {
 				setPendingIds(new Set(watchSessions.map((s) => s.sessionInfo.sessionId)));
 				setCursor(0);
@@ -171,14 +200,36 @@ export function Dashboard({
 				setRenameBuffer((b) => b + input);
 			}
 		} else if (mode === 'settings') {
-			if (key.leftArrow || input === 'h') {
-				const newIdx = Math.max(0, intervalIdx - 1);
-				setIntervalIdx(newIdx);
-				if (newIdx !== intervalIdx) onIntervalChange?.(PRESETS_MS[newIdx]);
+			if (key.upArrow || input === 'k') {
+				setSettingsCursor((c) => Math.max(0, c - 1));
+			} else if (key.downArrow || input === 'j') {
+				setSettingsCursor((c) => Math.min(1, c + 1));
+			} else if (key.leftArrow || input === 'h') {
+				if (settingsCursor === 0) {
+					const newIdx = Math.max(0, intervalIdx - 1);
+					if (newIdx !== intervalIdx) {
+						setIntervalIdx(newIdx);
+						onIntervalChange?.(PRESETS_MS[newIdx]);
+					}
+				} else {
+					setSortMethod((m) => {
+						const idx = SORT_METHODS.indexOf(m);
+						return SORT_METHODS[(idx - 1 + SORT_METHODS.length) % SORT_METHODS.length];
+					});
+				}
 			} else if (key.rightArrow || input === 'l') {
-				const newIdx = Math.min(PRESETS_MS.length - 1, intervalIdx + 1);
-				setIntervalIdx(newIdx);
-				if (newIdx !== intervalIdx) onIntervalChange?.(PRESETS_MS[newIdx]);
+				if (settingsCursor === 0) {
+					const newIdx = Math.min(PRESETS_MS.length - 1, intervalIdx + 1);
+					if (newIdx !== intervalIdx) {
+						setIntervalIdx(newIdx);
+						onIntervalChange?.(PRESETS_MS[newIdx]);
+					}
+				} else {
+					setSortMethod((m) => {
+						const idx = SORT_METHODS.indexOf(m);
+						return SORT_METHODS[(idx + 1) % SORT_METHODS.length];
+					});
+				}
 			} else if (key.escape) {
 				setMode('watch');
 			}
@@ -212,6 +263,9 @@ export function Dashboard({
 					intervalMs={PRESETS_MS[intervalIdx]}
 					presets={PRESETS_MS}
 					labels={PRESET_LABELS}
+					sortMethod={sortMethod}
+					sortLabels={SORT_LABELS}
+					settingsCursor={settingsCursor}
 				/>
 			</Box>
 		);
