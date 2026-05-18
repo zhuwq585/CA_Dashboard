@@ -16,7 +16,7 @@ export default [
 		rules: {
 			...tseslint.configs.recommended.rules,
 			'no-tabs': 'off',
-			'indent': ['error', 'tab'],
+			indent: ['error', 'tab', { SwitchCase: 1 }],
 		},
 	},
 ];

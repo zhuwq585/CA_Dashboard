@@ -20,7 +20,7 @@ async function jsonlPath(): Promise<string> {
 // Writes a sequence of JSONL entries to the session's log file.
 async function writeJsonl(entries: unknown[]): Promise<string> {
 	const file = await jsonlPath();
-	const content = entries.map(e => JSON.stringify(e)).join('\n') + '\n';
+	const content = entries.map((e) => JSON.stringify(e)).join('\n') + '\n';
 	await fs.writeFile(file, content);
 	return file;
 }
@@ -78,7 +78,9 @@ describe('encodeProjectPath', () => {
 	it('C2a: replaces underscores with - (matches real Claude Code encoding)', () => {
 		// Empirically observed: Claude Code stores this cwd at
 		// ~/.claude/projects/-Users-syu-workspace-CA-Dashboard/
-		expect(encodeProjectPath('/Users/syu/workspace/CA_Dashboard')).toBe('-Users-syu-workspace-CA-Dashboard');
+		expect(encodeProjectPath('/Users/syu/workspace/CA_Dashboard')).toBe(
+			'-Users-syu-workspace-CA-Dashboard',
+		);
 	});
 
 	it('C2b: replaces dots and other non-alphanumerics with -', () => {
@@ -132,7 +134,11 @@ describe('ConversationLogReader.readState', () => {
 		const followupAssistant = {
 			...assistantEndTurn,
 			uuid: 'asst-followup',
-			message: { ...assistantEndTurn.message, stop_reason: 'tool_use', content: [{ type: 'thinking', thinking: '...' }] },
+			message: {
+				...assistantEndTurn.message,
+				stop_reason: 'tool_use',
+				content: [{ type: 'thinking', thinking: '...' }],
+			},
 		};
 		await writeJsonl([assistantToolUse, followupAssistant]);
 		const result = await reader.readState(CWD, SESSION_ID);
@@ -192,12 +198,12 @@ describe('ConversationLogReader.readState', () => {
 		await writeJsonl([...filler, assistantToolUse]);
 
 		const reader1k = new ConversationLogReader({ jsonlRoot: tmpDir, tailBytes: 1024 });
-		const result   = await reader1k.readState(CWD, SESSION_ID);
+		const result = await reader1k.readState(CWD, SESSION_ID);
 		expect(result.state.kind).toBe('pendingToolApproval');
 
 		// With a tailBytes smaller than any single entry, every parse fails → unknown.
 		const reader30 = new ConversationLogReader({ jsonlRoot: tmpDir, tailBytes: 30 });
-		const tiny     = await reader30.readState(CWD, SESSION_ID);
+		const tiny = await reader30.readState(CWD, SESSION_ID);
 		expect(tiny.state.kind).toBe('unknown');
 	});
 });

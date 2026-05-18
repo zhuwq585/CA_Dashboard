@@ -11,7 +11,7 @@ import { ConfigStore, type DashboardConfig } from './persistence/configStore.js'
 const store  = new ConfigStore(path.join(os.homedir(), '.ca-dashboard', 'settings.json'));
 const config = store.load();
 
-const watcher  = new SessionFileWatcher();
+const watcher = new SessionFileWatcher();
 const resolver = new StatusResolver();
 
 let currentSessions: ResolvedSession[] = [];

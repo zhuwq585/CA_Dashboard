@@ -1,43 +1,46 @@
 {
-  "name": "ca_dashboard",
-  "version": "1.0.0",
-  "description": "A dashboard for monitoring multiple coding agent sessions (Claude Code, CodeX, etc.) running simultaneously, especially on remote servers via SSH and tmux.",
-  "main": "dist/index.js",
-  "scripts": {
-    "build": "tsc",
-    "dev": "tsx src/index.ts",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "lint": "eslint"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/zhuwq585/CA_Dashboard.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "module",
-  "bugs": {
-    "url": "https://github.com/zhuwq585/CA_Dashboard/issues"
-  },
-  "homepage": "https://github.com/zhuwq585/CA_Dashboard#readme",
-  "devDependencies": {
-    "@types/node": "^25.6.0",
-    "@types/react": "^19.2.14",
-    "@typescript-eslint/eslint-plugin": "^8.59.2",
-    "@typescript-eslint/parser": "^8.59.2",
-    "@vitest/coverage-v8": "^4.1.5",
-    "eslint": "^10.3.0",
-    "ink-testing-library": "^4.0.0",
-    "tsx": "^4.21.0",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.5"
-  },
-  "dependencies": {
-    "ink": "^7.0.2",
-    "react": "^19.2.5",
-    "tinyexec": "^0.3.2"
-  }
+	"name": "ca_dashboard",
+	"version": "1.0.0",
+	"description": "A dashboard for monitoring multiple coding agent sessions (Claude Code, CodeX, etc.) running simultaneously, especially on remote servers via SSH and tmux.",
+	"main": "dist/index.js",
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsx src/index.ts",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
+		"lint": "eslint",
+		"format": "prettier --write .",
+		"format:check": "prettier --check ."
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/zhuwq585/CA_Dashboard.git"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"type": "module",
+	"bugs": {
+		"url": "https://github.com/zhuwq585/CA_Dashboard/issues"
+	},
+	"homepage": "https://github.com/zhuwq585/CA_Dashboard#readme",
+	"devDependencies": {
+		"@types/node": "^25.6.0",
+		"@types/react": "^19.2.14",
+		"@typescript-eslint/eslint-plugin": "^8.59.2",
+		"@typescript-eslint/parser": "^8.59.2",
+		"@vitest/coverage-v8": "^4.1.5",
+		"eslint": "^10.3.0",
+		"ink-testing-library": "^4.0.0",
+		"prettier": "^3.8.3",
+		"tsx": "^4.21.0",
+		"typescript": "^6.0.3",
+		"vitest": "^4.1.5"
+	},
+	"dependencies": {
+		"ink": "^7.0.2",
+		"react": "^19.2.5",
+		"tinyexec": "^0.3.2"
+	}
 }

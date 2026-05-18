@@ -18,7 +18,7 @@ export interface ConversationLogReaderOptions {
 }
 
 export interface ConversationStateResult {
-	state:    ConversationState;
+	state: ConversationState;
 	mtimeMs?: number;
 }
 
@@ -60,8 +60,8 @@ export class ConversationLogReader {
 		const handle = await fs.open(filePath, 'r');
 		try {
 			const readSize = Math.min(this.tailBytes, fileSize);
-			const offset   = fileSize - readSize;
-			const buffer   = Buffer.alloc(readSize);
+			const offset = fileSize - readSize;
+			const buffer = Buffer.alloc(readSize);
 			await handle.read(buffer, 0, readSize, offset);
 			let text = buffer.toString('utf-8');
 			// Drop a leading partial line if we did not start at the beginning of the file.
@@ -71,9 +71,9 @@ export class ConversationLogReader {
 			}
 			return text
 				.split('\n')
-				.map(line => line.trim())
-				.filter(line => line.length > 0)
-				.map(line => {
+				.map((line) => line.trim())
+				.filter((line) => line.length > 0)
+				.map((line) => {
 					try {
 						return JSON.parse(line) as ParsedEntry;
 					} catch {
@@ -89,8 +89,10 @@ export class ConversationLogReader {
 
 // Returns true when an assistant entry's content includes a tool_use block.
 function hasToolUseBlock(entry: ParsedEntry): boolean {
-	return Array.isArray(entry.message?.content)
-		&& entry.message!.content!.some(block => block.type === 'tool_use');
+	return (
+		Array.isArray(entry.message?.content) &&
+		entry.message!.content!.some((block) => block.type === 'tool_use')
+	);
 }
 
 // Maps the parsed entries (in order) to a ConversationState. Synthetic entry
@@ -103,18 +105,21 @@ function classify(entries: ParsedEntry[]): ConversationState {
 	// Walk backward once, tracking the most recent conversation turn, the most
 	// recent user entry, and the most recent pending tool_use (assistant with
 	// stop_reason 'tool_use' AND a tool_use block).
-	let lastConvIdx        = -1;
-	let lastUserIdx        = -1;
+	let lastConvIdx = -1;
+	let lastUserIdx = -1;
 	let lastPendingToolIdx = -1;
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const e = entries[i];
 		const isConv = e.type === 'user' || e.type === 'assistant';
 		if (lastConvIdx === -1 && isConv) lastConvIdx = i;
 		if (lastUserIdx === -1 && e.type === 'user') lastUserIdx = i;
-		if (lastPendingToolIdx === -1
-			&& e.type === 'assistant'
-			&& e.message?.stop_reason === 'tool_use'
-			&& hasToolUseBlock(e)) lastPendingToolIdx = i;
+		if (
+			lastPendingToolIdx === -1 &&
+			e.type === 'assistant' &&
+			e.message?.stop_reason === 'tool_use' &&
+			hasToolUseBlock(e)
+		)
+			lastPendingToolIdx = i;
 		if (lastConvIdx !== -1 && lastUserIdx !== -1 && lastPendingToolIdx !== -1) break;
 	}
 

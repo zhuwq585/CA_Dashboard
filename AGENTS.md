@@ -10,12 +10,12 @@ CA_Dashboard monitors multiple coding agent sessions (Claude Code, CodeX, etc.) 
 
 The four states the dashboard must distinguish:
 
-| State | Meaning |
-|---|---|
-| **Executing** | Agent is actively running a task |
-| **Waiting** | Agent is paused, expecting user input |
-| **Idle** | Agent finished its last task, no new work |
-| **Hanging** | Session is unresponsive or stalled |
+| State         | Meaning                                   |
+| ------------- | ----------------------------------------- |
+| **Executing** | Agent is actively running a task          |
+| **Waiting**   | Agent is paused, expecting user input     |
+| **Idle**      | Agent finished its last task, no new work |
+| **Hanging**   | Session is unresponsive or stalled        |
 
 ## Commands
 
@@ -45,12 +45,14 @@ This project follows **spec-driven TDD** using a **two-agent pattern**:
 Two distinct agent roles operate in this repo. Each agent must know which role it is playing before acting.
 
 **Main-branch agent** — runs on `main`, never writes implementation code:
+
 1. Write the spec document for a feature in `docs/specs/<feature-name>.md`
 2. Create a `feature/` branch and a git worktree for it
 3. Open a draft PR for the branch
 4. Hand off to a feature-branch agent by pointing it at the worktree and spec
 
 **Feature-branch agent** — runs inside the feature worktree, never touches `main`:
+
 1. Read the spec document produced by the main-branch agent
 2. Follow the Red-Green-Refactor cycle: write failing tests → implement → clean up
 3. Push commits to the feature branch
@@ -69,6 +71,7 @@ Never write implementation code without a spec. Never write a spec without readi
 ### Red phase rules
 
 Before writing any tests, create every source file the spec calls for. Each file must:
+
 - Export all types, interfaces, enums, and class/function signatures exactly as the spec defines
 - Have empty or minimal bodies — functions return `undefined`, class methods throw `new Error('not implemented')`, enums and interfaces are complete
 - Compile without TypeScript errors (`npm run build` passes)
@@ -79,12 +82,12 @@ Tests must fail in the red phase because the **logic is missing**, not because a
 
 Branch names must start with one of the following prefixes:
 
-| Prefix | Purpose |
-|---|---|
-| `design/` | Architecture and system design work |
-| `feature/` | New feature implementation |
-| `fix/` | Bug fixes |
-| `dev/` | Tooling, configuration, and developer experience |
+| Prefix     | Purpose                                          |
+| ---------- | ------------------------------------------------ |
+| `design/`  | Architecture and system design work              |
+| `feature/` | New feature implementation                       |
+| `fix/`     | Bug fixes                                        |
+| `dev/`     | Tooling, configuration, and developer experience |
 
 Example: `feature/session-status-polling`, `fix/hanging-detection-timeout`
 

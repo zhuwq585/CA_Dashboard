@@ -7,34 +7,34 @@ import { SelectView } from './SelectView.js';
 import { SettingsView } from './SettingsView.js';
 import type { DashboardConfig } from '../persistence/configStore.js';
 
-const PRESETS_MS    = [500, 1_000, 2_000, 5_000, 10_000, 30_000] as const;
+const PRESETS_MS = [500, 1_000, 2_000, 5_000, 10_000, 30_000] as const;
 const PRESET_LABELS = ['0.5s', '1s', '2s', '5s', '10s', '30s'] as const;
 
-const BUSY_STATUSES      = new Set([SessionStatus.Executing, SessionStatus.Waiting]);
+const BUSY_STATUSES = new Set([SessionStatus.Executing, SessionStatus.Waiting]);
 const ATTENTION_STATUSES = new Set([SessionStatus.Idle, SessionStatus.Hanging, SessionStatus.Dead]);
 
 const SortMethod = { Time: 'time', Status: 'status', Name: 'name' } as const;
-type SortMethod = typeof SortMethod[keyof typeof SortMethod];
+type SortMethod = (typeof SortMethod)[keyof typeof SortMethod];
 
 const STATUS_RANK: Record<SessionStatus, number> = {
 	[SessionStatus.Executing]: 0,
-	[SessionStatus.Waiting]:   1,
-	[SessionStatus.Idle]:      2,
-	[SessionStatus.Hanging]:   3,
-	[SessionStatus.Dead]:      4,
+	[SessionStatus.Waiting]: 1,
+	[SessionStatus.Idle]: 2,
+	[SessionStatus.Hanging]: 3,
+	[SessionStatus.Dead]: 4,
 };
 
 const SORT_METHODS: SortMethod[] = [SortMethod.Time, SortMethod.Status, SortMethod.Name];
 
 const SORT_LABELS: Record<SortMethod, string> = {
-	[SortMethod.Time]:   'Time',
+	[SortMethod.Time]: 'Time',
 	[SortMethod.Status]: 'Status',
-	[SortMethod.Name]:   'Name',
+	[SortMethod.Name]: 'Name',
 };
 
 interface DashboardProps {
-	sessions:          ResolvedSession[];
-	onExit:            () => void;
+	sessions: ResolvedSession[];
+	onExit: () => void;
 	onIntervalChange?: (ms: number) => void;
 	initialConfig?:    DashboardConfig;
 	onConfigChange?:   (config: DashboardConfig) => void;
@@ -107,30 +107,42 @@ export function Dashboard({ sessions, onExit, onIntervalChange, initialConfig, o
 
 	const clampedCursor = Math.min(cursor, Math.max(0, selectSessions.length - 1));
 
-	const watchSessions = (watchedIds.size === 0
-		? sortedSessions.filter(s => s.status !== SessionStatus.Dead)
-		: sortedSessions.filter(s => watchedIds.has(s.sessionInfo.sessionId) && s.status !== SessionStatus.Dead)
-	).filter(s => !hiddenIds.has(s.sessionInfo.sessionId));
+	const watchSessions = (
+		watchedIds.size === 0
+			? sortedSessions.filter((s) => s.status !== SessionStatus.Dead)
+			: sortedSessions.filter(
+					(s) => watchedIds.has(s.sessionInfo.sessionId) && s.status !== SessionStatus.Dead,
+				)
+	).filter((s) => !hiddenIds.has(s.sessionInfo.sessionId));
 
 	const clampedWatchCursor = Math.min(watchCursor, Math.max(0, watchSessions.length - 1));
 
 	useInput((input, key) => {
 		if (mode === 'watch') {
 			if (key.upArrow || input === 'k') {
-				setWatchCursor(c => Math.max(0, c - 1));
+				setWatchCursor((c) => Math.max(0, c - 1));
 			} else if (key.downArrow || input === 'j') {
-				setWatchCursor(c => Math.min(watchSessions.length - 1, c + 1));
+				setWatchCursor((c) => Math.min(watchSessions.length - 1, c + 1));
 			} else if (input === 'd') {
 				const id = watchSessions[clampedWatchCursor]?.sessionInfo.sessionId;
-				if (id) setHighlightedIds(prev => { const next = new Set(prev); next.delete(id); return next; });
+				if (id)
+					setHighlightedIds((prev) => {
+						const next = new Set(prev);
+						next.delete(id);
+						return next;
+					});
 			} else if (input === 'x') {
 				const id = watchSessions[clampedWatchCursor]?.sessionInfo.sessionId;
 				if (id) {
-					setHiddenIds(prev => { const next = new Set(prev); next.add(id); return next; });
-					setWatchCursor(c => Math.min(c, Math.max(0, watchSessions.length - 2)));
+					setHiddenIds((prev) => {
+						const next = new Set(prev);
+						next.add(id);
+						return next;
+					});
+					setWatchCursor((c) => Math.min(c, Math.max(0, watchSessions.length - 2)));
 				}
 			} else if (input === 's') {
-				setPendingIds(new Set(watchSessions.map(s => s.sessionInfo.sessionId)));
+				setPendingIds(new Set(watchSessions.map((s) => s.sessionInfo.sessionId)));
 				setCursor(0);
 				setMode('select');
 			} else if (input === 't') {
@@ -142,19 +154,28 @@ export function Dashboard({ sessions, onExit, onIntervalChange, initialConfig, o
 			const n = selectSessions.length;
 			if (n === 0) return;
 			if (key.upArrow || input === 'k') {
-				setCursor(c => (c - 1 + n) % n);
+				setCursor((c) => (c - 1 + n) % n);
 			} else if (key.downArrow || input === 'j') {
-				setCursor(c => (c + 1) % n);
+				setCursor((c) => (c + 1) % n);
 			} else if (input === ' ') {
 				const id = selectSessions[clampedCursor]?.sessionInfo.sessionId;
 				if (id) {
 					if (hiddenIds.has(id)) {
-						setHiddenIds(prev => { const next = new Set(prev); next.delete(id); return next; });
-						setPendingIds(prev => { const next = new Set(prev); next.add(id); return next; });
-					} else {
-						setPendingIds(prev => {
+						setHiddenIds((prev) => {
 							const next = new Set(prev);
-							if (next.has(id)) next.delete(id); else next.add(id);
+							next.delete(id);
+							return next;
+						});
+						setPendingIds((prev) => {
+							const next = new Set(prev);
+							next.add(id);
+							return next;
+						});
+					} else {
+						setPendingIds((prev) => {
+							const next = new Set(prev);
+							if (next.has(id)) next.delete(id);
+							else next.add(id);
 							return next;
 						});
 					}
@@ -178,9 +199,10 @@ export function Dashboard({ sessions, onExit, onIntervalChange, initialConfig, o
 				if (s) {
 					const id = s.sessionInfo.sessionId;
 					const trimmed = renameBuffer.trim();
-					setCustomNames(prev => {
+					setCustomNames((prev) => {
 						const next = new Map(prev);
-						if (trimmed) next.set(id, trimmed); else next.delete(id);
+						if (trimmed) next.set(id, trimmed);
+						else next.delete(id);
 						return next;
 					});
 				}
@@ -189,21 +211,24 @@ export function Dashboard({ sessions, onExit, onIntervalChange, initialConfig, o
 				setRenameBuffer('');
 				setMode('select');
 			} else if (input === '\x7f' || key.backspace) {
-				setRenameBuffer(b => b.slice(0, -1));
+				setRenameBuffer((b) => b.slice(0, -1));
 			} else if (input && !key.ctrl && !key.meta) {
-				setRenameBuffer(b => b + input);
+				setRenameBuffer((b) => b + input);
 			}
 		} else if (mode === 'settings') {
 			if (key.upArrow || input === 'k') {
-				setSettingsCursor(c => Math.max(0, c - 1));
+				setSettingsCursor((c) => Math.max(0, c - 1));
 			} else if (key.downArrow || input === 'j') {
-				setSettingsCursor(c => Math.min(1, c + 1));
+				setSettingsCursor((c) => Math.min(1, c + 1));
 			} else if (key.leftArrow || input === 'h') {
 				if (settingsCursor === 0) {
 					const newIdx = Math.max(0, intervalIdx - 1);
-					if (newIdx !== intervalIdx) { setIntervalIdx(newIdx); onIntervalChange?.(PRESETS_MS[newIdx]); }
+					if (newIdx !== intervalIdx) {
+						setIntervalIdx(newIdx);
+						onIntervalChange?.(PRESETS_MS[newIdx]);
+					}
 				} else {
-					setSortMethod(m => {
+					setSortMethod((m) => {
 						const idx = SORT_METHODS.indexOf(m);
 						return SORT_METHODS[(idx - 1 + SORT_METHODS.length) % SORT_METHODS.length];
 					});
@@ -211,9 +236,12 @@ export function Dashboard({ sessions, onExit, onIntervalChange, initialConfig, o
 			} else if (key.rightArrow || input === 'l') {
 				if (settingsCursor === 0) {
 					const newIdx = Math.min(PRESETS_MS.length - 1, intervalIdx + 1);
-					if (newIdx !== intervalIdx) { setIntervalIdx(newIdx); onIntervalChange?.(PRESETS_MS[newIdx]); }
+					if (newIdx !== intervalIdx) {
+						setIntervalIdx(newIdx);
+						onIntervalChange?.(PRESETS_MS[newIdx]);
+					}
 				} else {
-					setSortMethod(m => {
+					setSortMethod((m) => {
 						const idx = SORT_METHODS.indexOf(m);
 						return SORT_METHODS[(idx + 1) % SORT_METHODS.length];
 					});
@@ -262,7 +290,13 @@ export function Dashboard({ sessions, onExit, onIntervalChange, initialConfig, o
 	return (
 		<Box flexDirection="column">
 			{title}
-			<WatchView sessions={watchSessions} allSessions={sessions} cursor={clampedWatchCursor} highlightedIds={highlightedIds} customNames={customNames} />
+			<WatchView
+				sessions={watchSessions}
+				allSessions={sessions}
+				cursor={clampedWatchCursor}
+				highlightedIds={highlightedIds}
+				customNames={customNames}
+			/>
 		</Box>
 	);
 }
