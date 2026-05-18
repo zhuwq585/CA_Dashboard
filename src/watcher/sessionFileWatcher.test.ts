@@ -1,11 +1,4 @@
-import {
-	describe,
-	it,
-	expect,
-	beforeEach,
-	afterEach,
-	vi,
-} from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -39,7 +32,7 @@ async function waitForWatchEvent(ms = 100): Promise<void> {
 	// FSEvents on macOS coalesces notifications and can take ~50ms real time
 	// to deliver them. We use the real (unfaked) setTimeout so this wait is
 	// measured in wall-clock time, not fake-timer ticks.
-	await new Promise<void>(resolve => realSetTimeout(resolve, ms));
+	await new Promise<void>((resolve) => realSetTimeout(resolve, ms));
 }
 
 let tmpDir: string;
@@ -63,7 +56,11 @@ afterEach(async () => {
 describe('SessionFileWatcher', () => {
 	it('W1: initial scan emits existing files', async () => {
 		await writeSession(tmpDir, '1234.json', minimalSession);
-		await writeSession(tmpDir, '5678.json', { ...minimalSession, pid: 5678, sessionId: 'bbbbbbbb-0000-0000-0000-000000000000' });
+		await writeSession(tmpDir, '5678.json', {
+			...minimalSession,
+			pid: 5678,
+			sessionId: 'bbbbbbbb-0000-0000-0000-000000000000',
+		});
 
 		const onChanged = vi.fn<SessionsChangedCallback>();
 		watcher = new SessionFileWatcher({ sessionsDir: tmpDir });
@@ -90,14 +87,18 @@ describe('SessionFileWatcher', () => {
 		watcher.start(onChanged);
 		await waitForWatchEvent();
 
-		await writeSession(tmpDir, '9999.json', { ...minimalSession, pid: 9999, sessionId: 'cccccccc-0000-0000-0000-000000000000' });
+		await writeSession(tmpDir, '9999.json', {
+			...minimalSession,
+			pid: 9999,
+			sessionId: 'cccccccc-0000-0000-0000-000000000000',
+		});
 		await waitForWatchEvent();
 		await vi.advanceTimersByTimeAsync(100);
 		await waitForWatchEvent();
 
 		expect(onChanged).toHaveBeenCalledTimes(2);
 		const sessions = onChanged.mock.calls[1][0];
-		expect(sessions.some(s => s.pid === 9999)).toBe(true);
+		expect(sessions.some((s) => s.pid === 9999)).toBe(true);
 	});
 
 	it('W4: file change triggers update', async () => {
@@ -119,7 +120,11 @@ describe('SessionFileWatcher', () => {
 
 	it('W5: file deletion triggers update', async () => {
 		await writeSession(tmpDir, '1234.json', minimalSession);
-		await writeSession(tmpDir, '5678.json', { ...minimalSession, pid: 5678, sessionId: 'bbbbbbbb-0000-0000-0000-000000000000' });
+		await writeSession(tmpDir, '5678.json', {
+			...minimalSession,
+			pid: 5678,
+			sessionId: 'bbbbbbbb-0000-0000-0000-000000000000',
+		});
 
 		const onChanged = vi.fn<SessionsChangedCallback>();
 		watcher = new SessionFileWatcher({ sessionsDir: tmpDir, debounceMs: 100 });
@@ -143,7 +148,11 @@ describe('SessionFileWatcher', () => {
 
 		// Write 5 files rapidly without advancing timers
 		for (let i = 0; i < 5; i++) {
-			await writeSession(tmpDir, `${i}.json`, { ...minimalSession, pid: i, sessionId: `${i}aaaaaaa-0000-0000-0000-000000000000` });
+			await writeSession(tmpDir, `${i}.json`, {
+				...minimalSession,
+				pid: i,
+				sessionId: `${i}aaaaaaa-0000-0000-0000-000000000000`,
+			});
 			await waitForWatchEvent();
 		}
 
@@ -158,7 +167,11 @@ describe('SessionFileWatcher', () => {
 		const onChanged = vi.fn<SessionsChangedCallback>();
 		// Large debounceMs ensures any spurious fs.watch startup event on macOS
 		// doesn't create a debounce timer that fires within our 1000ms tick window.
-		watcher = new SessionFileWatcher({ sessionsDir: tmpDir, tickIntervalMs: 1000, debounceMs: 5000 });
+		watcher = new SessionFileWatcher({
+			sessionsDir: tmpDir,
+			tickIntervalMs: 1000,
+			debounceMs: 5000,
+		});
 		watcher.start(onChanged);
 		await waitForWatchEvent();
 
@@ -217,7 +230,11 @@ describe('SessionFileWatcher', () => {
 
 	it('W11: stop() prevents further callbacks', async () => {
 		const onChanged = vi.fn<SessionsChangedCallback>();
-		watcher = new SessionFileWatcher({ sessionsDir: tmpDir, tickIntervalMs: 1000, debounceMs: 100 });
+		watcher = new SessionFileWatcher({
+			sessionsDir: tmpDir,
+			tickIntervalMs: 1000,
+			debounceMs: 100,
+		});
 		watcher.start(onChanged);
 		await waitForWatchEvent();
 
@@ -228,7 +245,12 @@ describe('SessionFileWatcher', () => {
 	});
 
 	it('W12: old schema parsed correctly', async () => {
-		const old = { pid: 1234, sessionId: 'aaaaaaaa-0000-0000-0000-000000000000', cwd: '/home/user/project', startedAt: 1000000000000 };
+		const old = {
+			pid: 1234,
+			sessionId: 'aaaaaaaa-0000-0000-0000-000000000000',
+			cwd: '/home/user/project',
+			startedAt: 1000000000000,
+		};
 		await fs.writeFile(path.join(tmpDir, '1234.json'), JSON.stringify(old));
 
 		const onChanged = vi.fn<SessionsChangedCallback>();

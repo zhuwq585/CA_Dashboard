@@ -5,8 +5,8 @@ import * as path from 'node:path';
 import type { SessionInfo } from '../types.js';
 
 export interface SessionFileWatcherOptions {
-	sessionsDir?:    string;
-	debounceMs?:     number;
+	sessionsDir?: string;
+	debounceMs?: number;
 	tickIntervalMs?: number;
 }
 
@@ -41,7 +41,7 @@ export class SessionFileWatcher {
 	// Stores options with defaults applied.
 	constructor(options?: SessionFileWatcherOptions) {
 		this.sessionsDir = options?.sessionsDir ?? path.join(os.homedir(), '.claude', 'sessions');
-		this.debounceMs  = options?.debounceMs     ?? 100;
+		this.debounceMs = options?.debounceMs ?? 100;
 		this.tickIntervalMs = options?.tickIntervalMs ?? 1000;
 	}
 
@@ -51,7 +51,7 @@ export class SessionFileWatcher {
 		this.active = true;
 		this.onChanged = onChanged;
 
-		void this.scan().then(sessions => {
+		void this.scan().then((sessions) => {
 			if (this.active) onChanged(sessions);
 		});
 
@@ -60,7 +60,7 @@ export class SessionFileWatcher {
 		});
 
 		this.tickTimer = setInterval(() => {
-			void this.scan().then(sessions => {
+			void this.scan().then((sessions) => {
 				if (this.active && this.onChanged) this.onChanged(sessions);
 			});
 		}, this.tickIntervalMs);
@@ -71,7 +71,7 @@ export class SessionFileWatcher {
 		if (this.tickTimer !== null) clearInterval(this.tickTimer);
 		if (!this.active) return;
 		this.tickTimer = setInterval(() => {
-			void this.scan().then(sessions => {
+			void this.scan().then((sessions) => {
 				if (this.active && this.onChanged) this.onChanged(sessions);
 			});
 		}, ms);
@@ -101,7 +101,7 @@ export class SessionFileWatcher {
 		if (this.debounceTimer !== null) clearTimeout(this.debounceTimer);
 		this.debounceTimer = setTimeout(() => {
 			this.debounceTimer = null;
-			void this.scan().then(sessions => {
+			void this.scan().then((sessions) => {
 				if (this.active && this.onChanged) this.onChanged(sessions);
 			});
 		}, this.debounceMs);
@@ -116,12 +116,13 @@ export class SessionFileWatcher {
 			return [];
 		}
 
-		const jsonFiles = entries.filter(e => e.endsWith('.json'));
+		const jsonFiles = entries.filter((e) => e.endsWith('.json'));
 		const results = await Promise.allSettled(
-			jsonFiles.map(filename =>
-				fsp.readFile(path.join(this.sessionsDir, filename), 'utf-8')
-					.then(raw => ({ filename, info: parseSessionInfo(raw) }))
-			)
+			jsonFiles.map((filename) =>
+				fsp
+					.readFile(path.join(this.sessionsDir, filename), 'utf-8')
+					.then((raw) => ({ filename, info: parseSessionInfo(raw) })),
+			),
 		);
 
 		const newCache = new Map<string, SessionInfo>();
