@@ -29,7 +29,13 @@ interface ParsedEntry {
 		content?: Array<{ type?: string }>;
 		stop_reason?: string;
 	};
+	toolUseResult?: unknown;
 }
+
+// The exact toolUseResult value Claude Code writes on a user entry when a tool
+// approval is rejected with no correction message. Such a rejection halts the
+// conversation (no follow-up API call), so the session is idle.
+const REJECTED_TOOL_RESULT = 'User rejected tool use';
 
 export class ConversationLogReader {
 	private readonly jsonlRoot: string;
@@ -125,7 +131,8 @@ function classify(entries: ParsedEntry[]): ConversationState {
 
 	if (lastConvIdx === -1) return { kind: 'unknown' };
 	if (lastPendingToolIdx > lastUserIdx) return { kind: 'pendingToolApproval' };
-	return entries[lastConvIdx].type === 'assistant'
-		? { kind: 'assistantDone' }
-		: { kind: 'userTurn' };
+	const lastConv = entries[lastConvIdx];
+	if (lastConv.type === 'assistant') return { kind: 'assistantDone' };
+	if (lastConv.toolUseResult === REJECTED_TOOL_RESULT) return { kind: 'userRejectedTool' };
+	return { kind: 'userTurn' };
 }

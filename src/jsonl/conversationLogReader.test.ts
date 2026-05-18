@@ -57,6 +57,34 @@ const userMessage = {
 	},
 };
 
+// A pure tool rejection: the user denied the approval prompt with no correction.
+// Claude Code writes a tool_result entry with toolUseResult='User rejected tool use'.
+const userRejectedTool = {
+	type: 'user',
+	uuid: 'user-reject',
+	timestamp: '2026-05-08T03:18:30.000Z',
+	message: {
+		role: 'user',
+		content: [
+			{
+				type: 'tool_result',
+				tool_use_id: 'tu_1',
+				is_error: true,
+				content: "The user doesn't want to proceed with this tool use.",
+			},
+		],
+	},
+	toolUseResult: 'User rejected tool use',
+};
+
+// A rejection with a correction message: Claude Code still calls the API, so this
+// is a genuine userTurn. Its toolUseResult is a longer 'Error: ...' string.
+const userRejectedWithCorrection = {
+	...userRejectedTool,
+	uuid: 'user-reject-correction',
+	toolUseResult: "Error: The user doesn't want to proceed with this tool use.",
+};
+
 beforeEach(async () => {
 	tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ca-dash-jsonl-'));
 	reader = new ConversationLogReader({ jsonlRoot: tmpDir });
@@ -187,6 +215,24 @@ describe('ConversationLogReader.readState', () => {
 		await writeJsonl([attachment, { ...attachment, uuid: 'att-2', type: 'pr-link' }]);
 		const result = await reader.readState(CWD, SESSION_ID);
 		expect(result.state.kind).toBe('unknown');
+	});
+
+	it('C17: userRejectedTool when last user entry is a pure tool rejection', async () => {
+		await writeJsonl([userMessage, assistantToolUse, userRejectedTool]);
+		const result = await reader.readState(CWD, SESSION_ID);
+		expect(result.state.kind).toBe('userRejectedTool');
+	});
+
+	it('C18: userTurn when rejection includes a correction (API call follows)', async () => {
+		await writeJsonl([userMessage, assistantToolUse, userRejectedWithCorrection]);
+		const result = await reader.readState(CWD, SESSION_ID);
+		expect(result.state.kind).toBe('userTurn');
+	});
+
+	it('C19: userRejectedTool survives trailing synthetic entries', async () => {
+		await writeJsonl([assistantToolUse, userRejectedTool, attachment]);
+		const result = await reader.readState(CWD, SESSION_ID);
+		expect(result.state.kind).toBe('userRejectedTool');
 	});
 
 	it('C12: classifies correctly when file exceeds tailBytes', async () => {

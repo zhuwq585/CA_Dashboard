@@ -127,6 +127,8 @@ export class StatusResolver {
 		}
 
 		if (state.kind === 'userTurn') return make(SessionStatus.Executing);
+		// A rejected tool with no correction halts the conversation — nothing is running.
+		if (state.kind === 'userRejectedTool') return make(SessionStatus.Idle);
 		if (state.kind === 'assistantDone') return make(SessionStatus.Idle);
 		return make(SessionStatus.Idle);
 	}

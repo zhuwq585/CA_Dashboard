@@ -202,6 +202,16 @@ describe('StatusResolver.resolve', () => {
 		expect(result.status).toBe(SessionStatus.Executing);
 	});
 
+	it('R-J14: Idle — userRejectedTool (tool rejected, conversation halted)', async () => {
+		mockPsAndPgrep(1234, true, []);
+		const resolver = new StatusResolver({
+			logReader: stubReader({ kind: 'userRejectedTool' }, NOW),
+		});
+		const session = { ...baseSession, updatedAt: NOW };
+		const [result] = await resolver.resolve([session]);
+		expect(result.status).toBe(SessionStatus.Idle);
+	});
+
 	it('R-J5: Hanging — stale JSONL mtime', async () => {
 		mockPsAndPgrep(1234, true, ['bash']);
 		const resolver = new StatusResolver({
