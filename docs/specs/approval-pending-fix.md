@@ -176,9 +176,10 @@ Integration-style: real temp directories, real files. No fs mocking. `os.tmpdir(
 | C8  | Trailing partial JSON (mid-write race)                                     | Skips partial line; classifies prior valid line |
 | C9  | Assistant `tool_use` followed by another assistant entry (no `user` since) | `state.kind === 'pendingToolApproval'`          |
 | C10 | `mtimeMs` returned matches `fs.stat` mtime                                 | `mtimeMs` defined and within ±5ms of stat       |
-| C11 | Last line: `user` entry, text content `[Request interrupted by user for tool use]` | `state.kind === 'userInterrupted'`       |
-| C20 | Last line: `user` entry, text content `[Request interrupted by user]`      | `state.kind === 'userInterrupted'`              |
-| C21 | Interrupt marker followed by a real `user` message                        | `state.kind === 'userTurn'`                     |
+| C17 | Last line: `user` entry, text content `[Request interrupted by user for tool use]` | `state.kind === 'userInterrupted'`       |
+| C18 | Last line: `user` entry, text content `[Request interrupted by user]`      | `state.kind === 'userInterrupted'`              |
+| C19 | Interrupt marker followed by a real `user` message                        | `state.kind === 'userTurn'`                     |
+| C22 | Interrupt marker followed only by synthetic entries                        | `state.kind === 'userInterrupted'`              |
 
 ### statusResolver.test.ts additions
 
